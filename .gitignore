@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+data/
+logs/
+checkpoints/
+fid_curves.png
+CLUSTER_SETUP.md
+david.md
+.vscode/
+CLAUDE.md
+plots/
+*.md
+notes.md
