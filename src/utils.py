@@ -52,6 +52,7 @@ def save_images(samples: np.ndarray, folder_name: str):
         Image.fromarray(img).save(os.path.join(folder_name, f"{i:05d}.png"))
 
 
+@eqx.filter_jit
 def sample_batch_x(
     model: eqx.Module,
     key: PRNGKeyArray,
@@ -62,16 +63,18 @@ def sample_batch_x(
     """
     sample from model by predicting x
     input is the timestep sequence
+
+    uses lax.scan (instead of a python for loop) so the whole sampling
+    trajectory compiles into one fused call rather than dispatching each
+    step eagerly
     """
     # Initialize with pure noise
     z = jax.random.normal(key, (batch_size,) + image_shape)
 
-    num_steps = len(timesteps) - 1
-
-    for i in range(num_steps):
-        t = timesteps[i]
-        t_next = timesteps[i + 1]
-
+    def step(
+        z: Float[Array, "batch c h w"], ts: Float[Array, " 2"]
+    ) -> tuple[Float[Array, "batch c h w"], None]:
+        t, t_next = ts[0], ts[1]
         t_batched = jnp.full(batch_size, t)
 
         # predict clean data
@@ -81,6 +84,10 @@ def sample_batch_x(
         v = (x_pred - z) / jnp.maximum(1 - t, 0.05)
 
         z = z + (t_next - t) * v
+        return z, None
+
+    ts_pairs = jnp.stack([timesteps[:-1], timesteps[1:]], axis=1)
+    z, _ = jax.lax.scan(step, z, ts_pairs)
 
     return z
 
