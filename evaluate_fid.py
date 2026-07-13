@@ -5,7 +5,14 @@ import json
 import os
 from pathlib import Path
 
+import torch
 from cleanfid import fid
+
+# FID here is a one-time offline pass over ~1000 small images, not a training
+# bottleneck -- run it on CPU so it doesn't depend on matching cleanfid's
+# torch build to whichever GPU node/driver version this happens to run on
+# (the cluster's partitions span very different driver versions).
+DEVICE = torch.device("cpu")
 
 
 def run_evaluation():
@@ -48,7 +55,7 @@ def run_evaluation():
 
         try:
             # clean-fid automatically handles image processing and computes the score
-            score = fid.compute_fid(REAL_DIR, schedule_dir)
+            score = fid.compute_fid(REAL_DIR, schedule_dir, device=DEVICE)
 
             results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
             results[experiment_name][schedule_name][epoch_str] = round(float(score), 4)
