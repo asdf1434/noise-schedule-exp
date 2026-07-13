@@ -178,6 +178,14 @@ def main():
 
     parser.add_argument("--dist_params", type=str, default="{}", help="schedule params")
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="RNG seed for init/data order/training+eval noise; also appended to "
+        "the experiment name so repeated trials with different seeds don't "
+        "collide on checkpoints/eval_runs/metrics",
+    )
+    parser.add_argument(
         "--model_params",
         type=str,
         default='{"hidden_channels": 256, "num_channels": 64}',
@@ -201,6 +209,7 @@ def main():
     exp_name = (
         f"{args.conditioning}_{base_name}" if args.conditioning != "none" else base_name
     )
+    exp_name = f"{exp_name}_seed{args.seed}"
 
     os.makedirs(os.path.join("logs", "metrics"), exist_ok=True)
 
@@ -214,7 +223,7 @@ def main():
 
     batch_size = 128
 
-    key = jax.random.PRNGKey(42)
+    key = jax.random.PRNGKey(args.seed)
     key, init_key = jax.random.split(key)
 
     print("init model")
