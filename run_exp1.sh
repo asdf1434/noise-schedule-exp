@@ -5,8 +5,8 @@
 # ==========================================
 #SBATCH --job-name=exp1_pilot           
 #SBATCH --account=vision-sitzmann     
-#SBATCH --qos=lab-free                
-#SBATCH --partition=vision-sitzmann-rtx4090,vision-sitzmann-a100,vision-sitzmann-h200,vision-sitzmann-l40s
+#SBATCH --qos=lab-free
+#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-v100,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
 #SBATCH --gres=gpu:1        
 #SBATCH --cpus-per-task=4             
 #SBATCH --mem=32G                     
@@ -18,9 +18,6 @@ set -e
 
 mkdir -p logs/slurm
 mkdir -p logs/metrics
-
-module load miniforge
-module load cuda
 
 source venv/bin/activate
 
