@@ -1,0 +1,44 @@
+cpu-bind=MASK - inspector-gadget.drl, task  0  0 [3847451]: mask 0xc000000000c set
+========================================
+does training-time noise distribution / inference-time sampling actually affect FID
+
+2 training distributions (uniform, logit_normal mu=0.0 sigma=1.0) x 5 seeds = 10 runs
+each run scored against all 4 sampling schedules automatically
+========================================
+
+>>> [seed 0] Uniform baseline
+init model
+load MNIST
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1783925806.054282 3847458 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1783925810.538655 3847458 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+training for 100 epochs using uniform distribution with conditioning=none
+log training metrics to: logs/metrics/metrics_uniform_seed0.jsonl
+Epoch 1/100 | Loss: 0.6188 | Time: 32.20s
+Epoch 2/100 | Loss: 0.2040 | Time: 24.38s
+Epoch 3/100 | Loss: 0.1979 | Time: 24.92s
+Epoch 4/100 | Loss: 0.1909 | Time: 24.91s
+Epoch 5/100 | Loss: 0.1887 | Time: 25.11s
+Epoch 6/100 | Loss: 0.1864 | Time: 24.93s
+Epoch 7/100 | Loss: 0.1877 | Time: 25.14s
+Epoch 8/100 | Loss: 0.1820 | Time: 24.86s
+Epoch 9/100 | Loss: 0.1819 | Time: 25.07s
+Epoch 10/100 | Loss: 0.1802 | Time: 24.97s
+
+Exporting eval images for epoch 10
+Exported samples for uniform into eval_runs/uniform_seed0/epoch_10/uniform
+Exported samples for shifted_coarse into eval_runs/uniform_seed0/epoch_10/shifted_coarse
+Exported samples for shifted_fine into eval_runs/uniform_seed0/epoch_10/shifted_fine
+Exported samples for logit_normal into eval_runs/uniform_seed0/epoch_10/logit_normal
+-----------------------------------------
+Saved checkpoint to checkpoints/uniform_seed0_epoch_10.eqx
+Epoch 11/100 | Loss: 0.1834 | Time: 25.09s
+Epoch 12/100 | Loss: 0.1775 | Time: 24.95s
+Epoch 13/100 | Loss: 0.1777 | Time: 24.99s
+Epoch 14/100 | Loss: 0.1775 | Time: 25.09s
+Epoch 15/100 | Loss: 0.1760 | Time: 24.96s
+Epoch 16/100 | Loss: 0.1760 | Time: 25.21s
+Epoch 17/100 | Loss: 0.1741 | Time: 24.90s
+Epoch 18/100 | Loss: 0.1751 | Time: 25.13s
+[2026-07-13T03:05:13.987] error: *** JOB 1097411 ON inspector-gadget.drl CANCELLED AT 2026-07-13T03:05:13 DUE to SIGNAL Terminated ***
