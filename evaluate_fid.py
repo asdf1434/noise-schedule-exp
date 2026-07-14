@@ -3,6 +3,8 @@
 import glob
 import json
 import os
+import re
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import torch
@@ -13,11 +15,45 @@ from cleanfid import fid
 # torch build to whichever GPU node/driver version this happens to run on
 # (the cluster's partitions span very different driver versions).
 DEVICE = torch.device("cpu")
-# match the job's actual --cpus-per-task; the cleanfid default (12) oversubscribes
-# and triggers DataLoader slowdown warnings on smaller allocations.
-NUM_WORKERS = 4
+# match the job's actual --cpus-per-task. Folders are scored in parallel
+# (one process per folder, see run_evaluation), so each individual
+# fid.compute_fid call gets num_workers=0 -- giving DataLoader subprocesses
+# of its own here would oversubscribe past what's actually allocated.
+POOL_WORKERS = 8
 
 REAL_STATS_NAME = "mnist_real"
+
+
+def _epoch_sort_key(schedule_dir: str) -> int:
+    match = re.search(r"epoch_(\d+)", schedule_dir)
+    return int(match.group(1)) if match else -1
+
+
+def _score_folder(schedule_dir: str):
+    """Runs in a worker process: scores one (experiment, epoch, schedule)
+    folder against the cached real-image stats. Returns
+    (experiment_name, schedule_name, epoch_str, score, error)."""
+    path_parts = Path(schedule_dir).parts
+    experiment_name = path_parts[1]
+    epoch_str = path_parts[2]
+    schedule_name = path_parts[3]
+
+    if not os.listdir(schedule_dir):
+        return experiment_name, schedule_name, epoch_str, None, "empty"
+
+    try:
+        score = fid.compute_fid(
+            schedule_dir,
+            dataset_name=REAL_STATS_NAME,
+            dataset_split="custom",
+            mode="clean",
+            device=DEVICE,
+            num_workers=0,
+            verbose=False,
+        )
+        return experiment_name, schedule_name, epoch_str, float(score), None
+    except Exception as e:
+        return experiment_name, schedule_name, epoch_str, None, str(e)
 
 
 def run_evaluation():
@@ -36,12 +72,14 @@ def run_evaluation():
     # the real-image stats never change, so that was pure repeated work.
     if not fid.test_stats_exists(REAL_STATS_NAME, mode="clean"):
         print(f"Caching real-image FID stats as '{REAL_STATS_NAME}'...")
+        # nothing else is running yet, so this single call can use all
+        # allocated CPUs as DataLoader workers
         fid.make_custom_stats(
             REAL_STATS_NAME,
             REAL_DIR,
             mode="clean",
             device=DEVICE,
-            num_workers=NUM_WORKERS,
+            num_workers=POOL_WORKERS,
         )
 
     print("==================================================")
@@ -56,44 +94,60 @@ def run_evaluation():
         return
 
     # results[experiment_name][schedule_name][epoch_str] = fid_score
-    results = {}
+    # Resume from a prior (possibly time-limit-killed) run instead of
+    # recomputing folders that were already scored.
+    if os.path.exists(MASTER_METRICS_FILE):
+        with open(MASTER_METRICS_FILE, "r") as f:
+            results = json.load(f)
+        print(f"Resuming from existing {MASTER_METRICS_FILE}")
+    else:
+        results = {}
 
-    for schedule_dir in sorted(schedule_dirs):
+    # Filter out folders already scored (resume) up front, so the pool only
+    # ever gets handed real work.
+    pending_dirs = []
+    for schedule_dir in sorted(schedule_dirs, key=_epoch_sort_key):
         path_parts = Path(schedule_dir).parts
-        experiment_name = path_parts[1]  # e.g., 'uniform'
-        epoch_str = path_parts[2]  # e.g., 'epoch_10'
-        schedule_name = path_parts[3]  # e.g., 'uniform', 'shifted', 'logit_normal'
-
-        if not os.listdir(schedule_dir):
-            print(f"  -> [SKIP] {schedule_dir} is empty")
-            continue
-
-        print(
-            f"Calculating FID for {experiment_name} / {schedule_name} ({epoch_str})..."
-        )
-
-        try:
-            # scored against the cached real-image stats (see above), not by
-            # recomputing them from REAL_DIR every time
-            score = fid.compute_fid(
-                schedule_dir,
-                dataset_name=REAL_STATS_NAME,
-                dataset_split="custom",
-                mode="clean",
-                device=DEVICE,
-                num_workers=NUM_WORKERS,
+        experiment_name = path_parts[1]
+        epoch_str = path_parts[2]
+        schedule_name = path_parts[3]
+        if epoch_str in results.get(experiment_name, {}).get(schedule_name, {}):
+            print(
+                f"  -> [SKIP] {experiment_name} / {schedule_name} ({epoch_str}) "
+                "already scored"
             )
+            continue
+        pending_dirs.append(schedule_dir)
+
+    print(f"Scoring {len(pending_dirs)} folders across {POOL_WORKERS} processes...")
+
+    # Folders are independent, so score them in parallel across processes
+    # instead of one at a time -- the previous sequential version left
+    # every core but one idle for the whole ~3.5 hour sweep.
+    with ProcessPoolExecutor(max_workers=POOL_WORKERS) as pool:
+        futures = [pool.submit(_score_folder, d) for d in pending_dirs]
+        for future in as_completed(futures):
+            experiment_name, schedule_name, epoch_str, score, error = future.result()
+
+            if error == "empty":
+                print(f"  -> [SKIP] {experiment_name}/{epoch_str}/{schedule_name} is empty")
+                continue
+            if error is not None:
+                print(
+                    f"  -> [ERROR] {experiment_name}/{epoch_str}/{schedule_name}: {error}"
+                )
+                continue
 
             results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
-            results[experiment_name][schedule_name][epoch_str] = round(float(score), 4)
-            print(f"  -> FID: {score:.4f}")
+            results[experiment_name][schedule_name][epoch_str] = round(score, 4)
+            print(
+                f"  -> FID {experiment_name} / {schedule_name} ({epoch_str}): {score:.4f}"
+            )
 
-        except Exception as e:
-            print(f"  -> [ERROR] Failed evaluating {schedule_dir}: {e}")
-
-    # Write all metrics out to a single master file for easy plotting later
-    with open(MASTER_METRICS_FILE, "w") as f:
-        json.dump(results, f, indent=4)
+            # Write after every folder (not just at the end) so a time-limit
+            # kill or crash mid-sweep doesn't lose already-computed scores.
+            with open(MASTER_METRICS_FILE, "w") as f:
+                json.dump(results, f, indent=4)
 
     print("==================================================")
     print(f"Evaluation complete! Master results saved to {MASTER_METRICS_FILE}")
