@@ -20,6 +20,7 @@ NUM_WORKERS = 4
 REAL_STATS_NAME = "mnist_real"
 REAL_DIR = "data/real"
 EVAL_RUNS_DIR = "eval_runs"
+SHARD_DIR = "fid_shards"
 
 
 def _epoch_sort_key(schedule_dir: str) -> int:
@@ -33,11 +34,11 @@ def run_evaluation(shard: int, num_shards: int):
     # same master file at once. merge_fid_shards.py combines them afterward.
     # With num_shards=1 (plain `python evaluate_fid.py`), this is just
     # master_fid_results.json directly.
-    metrics_file = (
-        "master_fid_results.json"
-        if num_shards == 1
-        else f"master_fid_results_shard{shard}.json"
-    )
+    if num_shards == 1:
+        metrics_file = "master_fid_results.json"
+    else:
+        os.makedirs(SHARD_DIR, exist_ok=True)
+        metrics_file = os.path.join(SHARD_DIR, f"master_fid_results_shard{shard}.json")
 
     if not os.path.exists(REAL_DIR):
         raise FileNotFoundError(f"Could not find your real images directory at: {REAL_DIR}")
