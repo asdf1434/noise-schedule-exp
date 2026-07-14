@@ -1,11 +1,10 @@
 # written by CLAUDE
 
+import argparse
 import glob
 import json
 import os
 import re
-import time
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 
 import torch
@@ -16,13 +15,11 @@ from cleanfid import fid
 # torch build to whichever GPU node/driver version this happens to run on
 # (the cluster's partitions span very different driver versions).
 DEVICE = torch.device("cpu")
-# match the job's actual --cpus-per-task. Folders are scored in parallel
-# (one process per folder, see run_evaluation), so each individual
-# fid.compute_fid call gets num_workers=0 -- giving DataLoader subprocesses
-# of its own here would oversubscribe past what's actually allocated.
-POOL_WORKERS = 8
+NUM_WORKERS = 4
 
 REAL_STATS_NAME = "mnist_real"
+REAL_DIR = "data/real"
+EVAL_RUNS_DIR = "eval_runs"
 
 
 def _epoch_sort_key(schedule_dir: str) -> int:
@@ -30,67 +27,25 @@ def _epoch_sort_key(schedule_dir: str) -> int:
     return int(match.group(1)) if match else -1
 
 
-def _init_worker():
-    # Each pool worker runs its own FID computation concurrently with the
-    # others. Torch defaults to using many intra-op threads per process for
-    # CPU inference; left alone, POOL_WORKERS processes each grabbing many
-    # threads massively oversubscribes the allocated CPUs and thrashes
-    # instead of speeding anything up. Pin each worker to a single thread so
-    # the 8-way process-level parallelism is what actually uses the 8 CPUs.
-    torch.set_num_threads(1)
-
-
-def _score_folder(schedule_dir: str):
-    """Runs in a worker process: scores one (experiment, epoch, schedule)
-    folder against the cached real-image stats. Returns
-    (experiment_name, schedule_name, epoch_str, score, error)."""
-    path_parts = Path(schedule_dir).parts
-    experiment_name = path_parts[1]
-    epoch_str = path_parts[2]
-    schedule_name = path_parts[3]
-
-    if not os.listdir(schedule_dir):
-        return experiment_name, schedule_name, epoch_str, None, "empty"
-
-    try:
-        score = fid.compute_fid(
-            schedule_dir,
-            dataset_name=REAL_STATS_NAME,
-            dataset_split="custom",
-            mode="clean",
-            device=DEVICE,
-            num_workers=0,
-            verbose=False,
-        )
-        return experiment_name, schedule_name, epoch_str, float(score), None
-    except Exception as e:
-        return experiment_name, schedule_name, epoch_str, None, str(e)
-
-
-def run_evaluation():
-    REAL_DIR = "data/real"  # TODO update this before running
-    EVAL_RUNS_DIR = "eval_runs"
-    MASTER_METRICS_FILE = "master_fid_results.json"
+def run_evaluation(shard: int, num_shards: int):
+    # When run under the Slurm array (run_exp1_eval_array.sh), each shard
+    # writes its own file so N concurrent array tasks never write to the
+    # same master file at once. merge_fid_shards.py combines them afterward.
+    # With num_shards=1 (plain `python evaluate_fid.py`), this is just
+    # master_fid_results.json directly.
+    metrics_file = (
+        "master_fid_results.json"
+        if num_shards == 1
+        else f"master_fid_results_shard{shard}.json"
+    )
 
     if not os.path.exists(REAL_DIR):
-        raise FileNotFoundError(
-            f"Could not find your real images directory at: {REAL_DIR}"
-        )
+        raise FileNotFoundError(f"Could not find your real images directory at: {REAL_DIR}")
 
-    # Precompute Inception stats for the real reference set ONCE and cache
-    # them, instead of recomputing over all real images from scratch for
-    # every one of the ~400 (experiment, schedule, epoch) folders below --
-    # the real-image stats never change, so that was pure repeated work.
     if not fid.test_stats_exists(REAL_STATS_NAME, mode="clean"):
-        print(f"Caching real-image FID stats as '{REAL_STATS_NAME}'...")
-        # nothing else is running yet, so this single call can use all
-        # allocated CPUs as DataLoader workers
-        fid.make_custom_stats(
-            REAL_STATS_NAME,
-            REAL_DIR,
-            mode="clean",
-            device=DEVICE,
-            num_workers=POOL_WORKERS,
+        raise RuntimeError(
+            f"Real-image FID stats '{REAL_STATS_NAME}' aren't cached yet. Run "
+            "cache_real_stats.py once first (see run_exp1_eval_stats.sh)."
         )
 
     print("==================================================")
@@ -99,6 +54,7 @@ def run_evaluation():
     # epoch level would silently merge all sampling schedules into one FID number.)
     schedule_dirs = glob.glob(os.path.join(EVAL_RUNS_DIR, "*", "epoch_*", "*"))
     schedule_dirs = [d for d in schedule_dirs if os.path.isdir(d)]
+    schedule_dirs = sorted(schedule_dirs, key=_epoch_sort_key)
 
     if not schedule_dirs:
         print("No evaluation directories found in 'eval_runs/'.")
@@ -107,94 +63,82 @@ def run_evaluation():
     # results[experiment_name][schedule_name][epoch_str] = fid_score
     # Resume from a prior (possibly time-limit-killed) run instead of
     # recomputing folders that were already scored.
-    if os.path.exists(MASTER_METRICS_FILE):
-        with open(MASTER_METRICS_FILE, "r") as f:
+    if os.path.exists(metrics_file):
+        with open(metrics_file, "r") as f:
             results = json.load(f)
-        print(f"Resuming from existing {MASTER_METRICS_FILE}")
+        print(f"Resuming from existing {metrics_file}")
     else:
         results = {}
 
-    # Filter out folders already scored (resume) up front, so the pool only
-    # ever gets handed real work.
     pending_dirs = []
-    for schedule_dir in sorted(schedule_dirs, key=_epoch_sort_key):
+    for schedule_dir in schedule_dirs:
         path_parts = Path(schedule_dir).parts
         experiment_name = path_parts[1]
         epoch_str = path_parts[2]
         schedule_name = path_parts[3]
         if epoch_str in results.get(experiment_name, {}).get(schedule_name, {}):
-            print(
-                f"  -> [SKIP] {experiment_name} / {schedule_name} ({epoch_str}) "
-                "already scored"
-            )
             continue
         pending_dirs.append(schedule_dir)
 
-    print(f"Scoring {len(pending_dirs)} folders across {POOL_WORKERS} processes...")
+    # Give this shard every num_shards-th pending folder, so the whole sweep
+    # (across all array tasks) covers every folder exactly once.
+    my_dirs = pending_dirs[shard::num_shards]
+    print(
+        f"Shard {shard}/{num_shards}: scoring {len(my_dirs)} of "
+        f"{len(pending_dirs)} pending folders"
+    )
 
-    # Folders are independent, so score them in parallel across processes
-    # instead of one at a time -- the previous sequential version left
-    # every core but one idle for the whole ~3.5 hour sweep.
-    HEARTBEAT_SECONDS = 30
-    with ProcessPoolExecutor(max_workers=POOL_WORKERS, initializer=_init_worker) as pool:
-        future_to_dir = {
-            pool.submit(_score_folder, d): d for d in pending_dirs
-        }
-        pending_futures = set(future_to_dir)
-        start_time = time.time()
-        completed_count = 0
+    for schedule_dir in my_dirs:
+        path_parts = Path(schedule_dir).parts
+        experiment_name = path_parts[1]
+        epoch_str = path_parts[2]
+        schedule_name = path_parts[3]
 
-        while pending_futures:
-            done, pending_futures = wait(
-                pending_futures, timeout=HEARTBEAT_SECONDS, return_when=FIRST_COMPLETED
+        if not os.listdir(schedule_dir):
+            print(f"  -> [SKIP] {schedule_dir} is empty")
+            continue
+
+        print(f"Calculating FID for {experiment_name} / {schedule_name} ({epoch_str})...")
+
+        try:
+            # scored against the cached real-image stats, not by
+            # recomputing them from REAL_DIR every time
+            score = fid.compute_fid(
+                schedule_dir,
+                dataset_name=REAL_STATS_NAME,
+                dataset_split="custom",
+                mode="clean",
+                device=DEVICE,
+                num_workers=NUM_WORKERS,
             )
 
-            if not done:
-                # Nothing finished in the last HEARTBEAT_SECONDS -- print
-                # proof of life plus exactly which folders are still
-                # outstanding, so a real hang is visible within 30s instead
-                # of silently indistinguishable from "just slow".
-                elapsed = time.time() - start_time
-                still_running = [
-                    os.path.relpath(future_to_dir[f], EVAL_RUNS_DIR)
-                    for f in list(pending_futures)[:POOL_WORKERS]
-                ]
-                print(
-                    f"[heartbeat] {elapsed:.0f}s elapsed, {completed_count}/"
-                    f"{len(pending_dirs)} done, still running (sample): "
-                    f"{still_running}"
-                )
-                continue
+            results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
+            results[experiment_name][schedule_name][epoch_str] = round(float(score), 4)
+            print(f"  -> FID: {score:.4f}")
 
-            for future in done:
-                experiment_name, schedule_name, epoch_str, score, error = future.result()
-                completed_count += 1
+            # Write after every folder (not just at the end) so a time-limit
+            # kill or crash mid-sweep doesn't lose already-computed scores.
+            with open(metrics_file, "w") as f:
+                json.dump(results, f, indent=4)
 
-                if error == "empty":
-                    print(f"  -> [SKIP] {experiment_name}/{epoch_str}/{schedule_name} is empty")
-                    continue
-                if error is not None:
-                    print(
-                        f"  -> [ERROR] {experiment_name}/{epoch_str}/{schedule_name}: {error}"
-                    )
-                    continue
-
-                results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
-                results[experiment_name][schedule_name][epoch_str] = round(score, 4)
-                print(
-                    f"  -> FID {experiment_name} / {schedule_name} ({epoch_str}): "
-                    f"{score:.4f} ({completed_count}/{len(pending_dirs)})"
-                )
-
-                # Write after every folder (not just at the end) so a
-                # time-limit kill or crash mid-sweep doesn't lose
-                # already-computed scores.
-                with open(MASTER_METRICS_FILE, "w") as f:
-                    json.dump(results, f, indent=4)
+        except Exception as e:
+            print(f"  -> [ERROR] Failed evaluating {schedule_dir}: {e}")
 
     print("==================================================")
-    print(f"Evaluation complete! Master results saved to {MASTER_METRICS_FILE}")
+    print(f"Shard {shard}/{num_shards} complete! Results saved to {metrics_file}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--shard", type=int, default=0, help="This task's index (0-based) among num_shards"
+    )
+    parser.add_argument(
+        "--num_shards", type=int, default=1, help="Total number of parallel shards/tasks"
+    )
+    args = parser.parse_args()
+    run_evaluation(args.shard, args.num_shards)
 
 
 if __name__ == "__main__":
-    run_evaluation()
+    main()
