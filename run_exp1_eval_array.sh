@@ -19,7 +19,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=03:30:00
-#SBATCH --array=0-7
+#SBATCH --array=0-15
 #SBATCH --output=logs/slurm/slurm_exp1_pilot_eval_array_%A_%a.out
 
 set -e
@@ -28,7 +28,7 @@ mkdir -p logs/slurm
 
 source venv/bin/activate
 
-NUM_SHARDS=8
+NUM_SHARDS=16
 
 echo "========================================"
 echo "Shard $SLURM_ARRAY_TASK_ID / $NUM_SHARDS"
