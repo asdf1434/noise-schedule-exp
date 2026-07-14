@@ -3,6 +3,7 @@ import functools
 import json
 import math
 import os
+import sys
 import time
 from typing import Callable, Optional
 
@@ -152,6 +153,20 @@ def save_checkpoint(model: eqx.Module, epoch: int, checkpoint_dir: str, prefix: 
 
 
 def main():
+    # Fail fast if JAX can't see a GPU (e.g. a node's CUDA driver doesn't
+    # support this jaxlib build) instead of silently training on CPU for
+    # the full run. Nonzero exit lets Slurm mark the task failed so it can
+    # be resubmitted and land on a working node.
+    gpu_devices = [d for d in jax.devices() if d.platform == "gpu"]
+    if not gpu_devices:
+        print(
+            f"ERROR: no GPU visible to JAX (jax.devices()={jax.devices()}). "
+            "Refusing to train on CPU -- exiting so this task can be resubmitted "
+            "onto a working node.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--train_dist",

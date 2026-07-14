@@ -19,6 +19,10 @@
 #SBATCH --account=vision-sitzmann
 #SBATCH --qos=lab-free
 #SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-v100,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
+# isola-2080ti-4 and gpu19-2.drl reliably fail CUDA init (cuInit errors) --
+# excluded here rather than dropping their whole partitions, since sibling
+# nodes (isola-2080ti-1/2/3, gpu19-1.drl) ran fine.
+#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
