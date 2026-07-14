@@ -13,10 +13,13 @@ def deep_merge(a: dict, b: dict) -> dict:
     return a
 
 
+SHARD_DIR = "fid_shards"
+
+
 def main():
-    shard_files = sorted(glob.glob("master_fid_results_shard*.json"))
+    shard_files = sorted(glob.glob(f"{SHARD_DIR}/master_fid_results_shard*.json"))
     if not shard_files:
-        print("No shard files found (master_fid_results_shard*.json).")
+        print(f"No shard files found ({SHARD_DIR}/master_fid_results_shard*.json).")
         return
 
     merged = {}
