@@ -30,7 +30,7 @@ echo "========================================"
 echo "Computing FID across all eval_runs/ -> master_fid_results.json"
 echo "========================================"
 
-python evaluate_fid.py
+python -u evaluate_fid.py
 
 echo -e "\n========================================"
 echo "Pilot done. master_fid_results.json now has 10 experiment entries:"

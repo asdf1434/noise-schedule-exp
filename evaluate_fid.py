@@ -4,7 +4,8 @@ import glob
 import json
 import os
 import re
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import time
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 
 import torch
@@ -27,6 +28,16 @@ REAL_STATS_NAME = "mnist_real"
 def _epoch_sort_key(schedule_dir: str) -> int:
     match = re.search(r"epoch_(\d+)", schedule_dir)
     return int(match.group(1)) if match else -1
+
+
+def _init_worker():
+    # Each pool worker runs its own FID computation concurrently with the
+    # others. Torch defaults to using many intra-op threads per process for
+    # CPU inference; left alone, POOL_WORKERS processes each grabbing many
+    # threads massively oversubscribes the allocated CPUs and thrashes
+    # instead of speeding anything up. Pin each worker to a single thread so
+    # the 8-way process-level parallelism is what actually uses the 8 CPUs.
+    torch.set_num_threads(1)
 
 
 def _score_folder(schedule_dir: str):
@@ -124,30 +135,62 @@ def run_evaluation():
     # Folders are independent, so score them in parallel across processes
     # instead of one at a time -- the previous sequential version left
     # every core but one idle for the whole ~3.5 hour sweep.
-    with ProcessPoolExecutor(max_workers=POOL_WORKERS) as pool:
-        futures = [pool.submit(_score_folder, d) for d in pending_dirs]
-        for future in as_completed(futures):
-            experiment_name, schedule_name, epoch_str, score, error = future.result()
+    HEARTBEAT_SECONDS = 30
+    with ProcessPoolExecutor(max_workers=POOL_WORKERS, initializer=_init_worker) as pool:
+        future_to_dir = {
+            pool.submit(_score_folder, d): d for d in pending_dirs
+        }
+        pending_futures = set(future_to_dir)
+        start_time = time.time()
+        completed_count = 0
 
-            if error == "empty":
-                print(f"  -> [SKIP] {experiment_name}/{epoch_str}/{schedule_name} is empty")
-                continue
-            if error is not None:
+        while pending_futures:
+            done, pending_futures = wait(
+                pending_futures, timeout=HEARTBEAT_SECONDS, return_when=FIRST_COMPLETED
+            )
+
+            if not done:
+                # Nothing finished in the last HEARTBEAT_SECONDS -- print
+                # proof of life plus exactly which folders are still
+                # outstanding, so a real hang is visible within 30s instead
+                # of silently indistinguishable from "just slow".
+                elapsed = time.time() - start_time
+                still_running = [
+                    os.path.relpath(future_to_dir[f], EVAL_RUNS_DIR)
+                    for f in list(pending_futures)[:POOL_WORKERS]
+                ]
                 print(
-                    f"  -> [ERROR] {experiment_name}/{epoch_str}/{schedule_name}: {error}"
+                    f"[heartbeat] {elapsed:.0f}s elapsed, {completed_count}/"
+                    f"{len(pending_dirs)} done, still running (sample): "
+                    f"{still_running}"
                 )
                 continue
 
-            results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
-            results[experiment_name][schedule_name][epoch_str] = round(score, 4)
-            print(
-                f"  -> FID {experiment_name} / {schedule_name} ({epoch_str}): {score:.4f}"
-            )
+            for future in done:
+                experiment_name, schedule_name, epoch_str, score, error = future.result()
+                completed_count += 1
 
-            # Write after every folder (not just at the end) so a time-limit
-            # kill or crash mid-sweep doesn't lose already-computed scores.
-            with open(MASTER_METRICS_FILE, "w") as f:
-                json.dump(results, f, indent=4)
+                if error == "empty":
+                    print(f"  -> [SKIP] {experiment_name}/{epoch_str}/{schedule_name} is empty")
+                    continue
+                if error is not None:
+                    print(
+                        f"  -> [ERROR] {experiment_name}/{epoch_str}/{schedule_name}: {error}"
+                    )
+                    continue
+
+                results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
+                results[experiment_name][schedule_name][epoch_str] = round(score, 4)
+                print(
+                    f"  -> FID {experiment_name} / {schedule_name} ({epoch_str}): "
+                    f"{score:.4f} ({completed_count}/{len(pending_dirs)})"
+                )
+
+                # Write after every folder (not just at the end) so a
+                # time-limit kill or crash mid-sweep doesn't lose
+                # already-computed scores.
+                with open(MASTER_METRICS_FILE, "w") as f:
+                    json.dump(results, f, indent=4)
 
     print("==================================================")
     print(f"Evaluation complete! Master results saved to {MASTER_METRICS_FILE}")
