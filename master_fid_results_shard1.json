@@ -1,0 +1,102 @@
+{
+    "logit_normal_mu_0.0_sigma_1.0_seed1": {
+        "logit_normal": {
+            "epoch_10": 60.8271,
+            "epoch_20": 59.5211,
+            "epoch_90": 58.5669
+        },
+        "shifted_fine": {
+            "epoch_30": 65.642,
+            "epoch_70": 62.4107,
+            "epoch_100": 59.5504
+        },
+        "uniform": {
+            "epoch_40": 53.881,
+            "epoch_60": 56.5613
+        },
+        "shifted_coarse": {
+            "epoch_50": 14.9058,
+            "epoch_80": 12.1756
+        }
+    },
+    "logit_normal_mu_0.0_sigma_1.0_seed2": {
+        "logit_normal": {
+            "epoch_10": 56.2486,
+            "epoch_20": 54.5697,
+            "epoch_60": 55.6625,
+            "epoch_90": 55.3114
+        },
+        "shifted_fine": {
+            "epoch_30": 56.942,
+            "epoch_40": 56.9276,
+            "epoch_80": 53.9275,
+            "epoch_100": 63.7648
+        },
+        "shifted_coarse": {
+            "epoch_50": 13.5882
+        },
+        "uniform": {
+            "epoch_70": 53.2139
+        }
+    },
+    "uniform_seed4": {
+        "uniform": {
+            "epoch_10": 59.3217,
+            "epoch_60": 56.3024,
+            "epoch_80": 53.3075,
+            "epoch_100": 50.7101
+        },
+        "shifted_fine": {
+            "epoch_20": 69.3681,
+            "epoch_30": 63.8471,
+            "epoch_70": 56.7256
+        },
+        "shifted_coarse": {
+            "epoch_40": 15.5536
+        },
+        "logit_normal": {
+            "epoch_50": 52.4029,
+            "epoch_90": 57.2775
+        }
+    },
+    "logit_normal_mu_0.0_sigma_1.0_seed0": {
+        "uniform": {
+            "epoch_10": 68.1043,
+            "epoch_20": 68.2014,
+            "epoch_90": 54.7842
+        },
+        "shifted_fine": {
+            "epoch_30": 59.0179,
+            "epoch_60": 66.9529,
+            "epoch_100": 64.5537
+        },
+        "logit_normal": {
+            "epoch_40": 49.0007,
+            "epoch_70": 55.5755
+        },
+        "shifted_coarse": {
+            "epoch_50": 13.2545,
+            "epoch_80": 12.0653
+        }
+    },
+    "uniform_seed0": {
+        "shifted_coarse": {
+            "epoch_10": 30.2005,
+            "epoch_30": 14.8487,
+            "epoch_90": 14.1449
+        },
+        "shifted_fine": {
+            "epoch_20": 66.5955,
+            "epoch_50": 65.5292
+        },
+        "uniform": {
+            "epoch_40": 54.2045,
+            "epoch_100": 53.1896
+        },
+        "logit_normal": {
+            "epoch_60": 58.8735,
+            "epoch_70": 52.6676,
+            "epoch_80": 56.0131
+        }
+    }
+}

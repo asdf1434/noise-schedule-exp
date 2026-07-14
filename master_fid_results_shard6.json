@@ -1,0 +1,102 @@
+{
+    "uniform_seed2": {
+        "shifted_fine": {
+            "epoch_10": 76.3087,
+            "epoch_20": 66.1236,
+            "epoch_30": 64.2242,
+            "epoch_80": 57.5574,
+            "epoch_90": 72.2415,
+            "epoch_100": 64.8623
+        },
+        "uniform": {
+            "epoch_40": 51.2481,
+            "epoch_50": 57.0181
+        },
+        "logit_normal": {
+            "epoch_60": 56.2584
+        },
+        "shifted_coarse": {
+            "epoch_70": 14.2595
+        }
+    },
+    "uniform_seed1": {
+        "shifted_fine": {
+            "epoch_10": 67.1503,
+            "epoch_70": 66.3336
+        },
+        "logit_normal": {
+            "epoch_20": 64.4204
+        },
+        "shifted_coarse": {
+            "epoch_30": 18.1587,
+            "epoch_80": 12.347,
+            "epoch_100": 12.3576
+        },
+        "uniform": {
+            "epoch_40": 57.0192,
+            "epoch_50": 55.4842,
+            "epoch_60": 56.4647,
+            "epoch_90": 54.1188
+        }
+    },
+    "uniform_seed3": {
+        "uniform": {
+            "epoch_10": 53.0433
+        },
+        "shifted_fine": {
+            "epoch_20": 68.9655,
+            "epoch_50": 59.256,
+            "epoch_70": 60.8038,
+            "epoch_90": 59.9134,
+            "epoch_100": 60.7163
+        },
+        "shifted_coarse": {
+            "epoch_30": 19.4545,
+            "epoch_60": 14.1835,
+            "epoch_80": 12.2555
+        },
+        "logit_normal": {
+            "epoch_40": 54.8368
+        }
+    },
+    "logit_normal_mu_0.0_sigma_1.0_seed4": {
+        "logit_normal": {
+            "epoch_10": 58.1363,
+            "epoch_40": 56.6808,
+            "epoch_50": 59.613
+        },
+        "shifted_fine": {
+            "epoch_20": 59.2462,
+            "epoch_60": 63.7818,
+            "epoch_80": 59.8842,
+            "epoch_100": 66.9199
+        },
+        "uniform": {
+            "epoch_30": 56.6861
+        },
+        "shifted_coarse": {
+            "epoch_70": 16.3597,
+            "epoch_90": 11.5096
+        }
+    },
+    "logit_normal_mu_0.0_sigma_1.0_seed3": {
+        "shifted_fine": {
+            "epoch_10": 74.9473,
+            "epoch_100": 63.0545
+        },
+        "uniform": {
+            "epoch_20": 60.4176,
+            "epoch_40": 62.4266,
+            "epoch_60": 52.4726,
+            "epoch_80": 54.4909
+        },
+        "shifted_coarse": {
+            "epoch_30": 15.9926
+        },
+        "logit_normal": {
+            "epoch_50": 50.173,
+            "epoch_70": 53.7838,
+            "epoch_90": 58.5219
+        }
+    }
+}
