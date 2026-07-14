@@ -13,6 +13,11 @@ from cleanfid import fid
 # torch build to whichever GPU node/driver version this happens to run on
 # (the cluster's partitions span very different driver versions).
 DEVICE = torch.device("cpu")
+# match the job's actual --cpus-per-task; the cleanfid default (12) oversubscribes
+# and triggers DataLoader slowdown warnings on smaller allocations.
+NUM_WORKERS = 4
+
+REAL_STATS_NAME = "mnist_real"
 
 
 def run_evaluation():
@@ -23,6 +28,20 @@ def run_evaluation():
     if not os.path.exists(REAL_DIR):
         raise FileNotFoundError(
             f"Could not find your real images directory at: {REAL_DIR}"
+        )
+
+    # Precompute Inception stats for the real reference set ONCE and cache
+    # them, instead of recomputing over all real images from scratch for
+    # every one of the ~400 (experiment, schedule, epoch) folders below --
+    # the real-image stats never change, so that was pure repeated work.
+    if not fid.test_stats_exists(REAL_STATS_NAME, mode="clean"):
+        print(f"Caching real-image FID stats as '{REAL_STATS_NAME}'...")
+        fid.make_custom_stats(
+            REAL_STATS_NAME,
+            REAL_DIR,
+            mode="clean",
+            device=DEVICE,
+            num_workers=NUM_WORKERS,
         )
 
     print("==================================================")
@@ -54,8 +73,16 @@ def run_evaluation():
         )
 
         try:
-            # clean-fid automatically handles image processing and computes the score
-            score = fid.compute_fid(REAL_DIR, schedule_dir, device=DEVICE)
+            # scored against the cached real-image stats (see above), not by
+            # recomputing them from REAL_DIR every time
+            score = fid.compute_fid(
+                schedule_dir,
+                dataset_name=REAL_STATS_NAME,
+                dataset_split="custom",
+                mode="clean",
+                device=DEVICE,
+                num_workers=NUM_WORKERS,
+            )
 
             results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
             results[experiment_name][schedule_name][epoch_str] = round(float(score), 4)
