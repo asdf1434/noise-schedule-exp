@@ -7,15 +7,17 @@ import os
 import re
 from pathlib import Path
 
+import numpy as np
 import torch
 from cleanfid import fid
 
-# FID here is a one-time offline pass over ~1000 small images, not a training
-# bottleneck -- run it on CPU so it doesn't depend on matching cleanfid's
-# torch build to whichever GPU node/driver version this happens to run on
-# (the cluster's partitions span very different driver versions).
-DEVICE = torch.device("cpu")
+# FID evaluation is the pipeline bottleneck, so prefer GPU when the Slurm
+# allocation provides one (see scripts/slurm/run_exp1_eval_array.sh's
+# --gres=gpu:1). Falls back to CPU so a plain `python evaluate_fid.py` still
+# works on a CPU-only box.
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 4
+BATCH_SIZE = 128
 
 REAL_STATS_NAME = "mnist_real"
 REAL_DIR = "data/real"
@@ -48,6 +50,14 @@ def run_evaluation(shard: int, num_shards: int):
             f"Real-image FID stats '{REAL_STATS_NAME}' aren't cached yet. Run "
             "cache_real_stats.py once first (see run_exp1_eval_stats.sh)."
         )
+
+    # Built once per process (not per folder) -- rebuilding the InceptionV3
+    # feature extractor and re-downloading/re-parsing reference stats per
+    # folder would dominate GPU wall-clock for these small (~1000-image) sets.
+    feat_model = fid.build_feature_extractor("clean", DEVICE)
+    ref_mu, ref_sigma = fid.get_reference_statistics(
+        REAL_STATS_NAME, res="na", mode="clean", split="custom"
+    )
 
     print("==================================================")
     # Find all leaf dirs that look like: eval_runs/experiment_name/epoch_X/schedule_name
@@ -102,16 +112,20 @@ def run_evaluation(shard: int, num_shards: int):
         print(f"Calculating FID for {experiment_name} / {schedule_name} ({epoch_str})...")
 
         try:
-            # scored against the cached real-image stats, not by
-            # recomputing them from REAL_DIR every time
-            score = fid.compute_fid(
+            # scored against the cached real-image stats and the resident
+            # feature model built above, not rebuilt/reloaded per folder
+            feats = fid.get_folder_features(
                 schedule_dir,
-                dataset_name=REAL_STATS_NAME,
-                dataset_split="custom",
-                mode="clean",
-                device=DEVICE,
+                model=feat_model,
                 num_workers=NUM_WORKERS,
+                batch_size=BATCH_SIZE,
+                device=DEVICE,
+                mode="clean",
+                verbose=False,
             )
+            mu = np.mean(feats, axis=0)
+            sigma = np.cov(feats, rowvar=False)
+            score = fid.frechet_distance(mu, sigma, ref_mu, ref_sigma)
 
             results.setdefault(experiment_name, {}).setdefault(schedule_name, {})
             results[experiment_name][schedule_name][epoch_str] = round(float(score), 4)

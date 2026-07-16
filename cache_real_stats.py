@@ -3,7 +3,7 @@
 import torch
 from cleanfid import fid
 
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 REAL_STATS_NAME = "mnist_real"
 REAL_DIR = "data/real"
 NUM_WORKERS = 8
