@@ -121,7 +121,7 @@ def run_evaluation(shard: int, num_shards: int):
                 batch_size=BATCH_SIZE,
                 device=DEVICE,
                 mode="clean",
-                verbose=False,
+                verbose=True,
             )
             mu = np.mean(feats, axis=0)
             sigma = np.cov(feats, rowvar=False)
