@@ -11,12 +11,12 @@ import numpy as np
 import torch
 from cleanfid import fid
 
-# FID evaluation is the pipeline bottleneck, so prefer GPU when the Slurm
-# allocation provides one (see scripts/slurm/run_exp1_eval_array.sh's
-# --gres=gpu:1). Falls back to CPU so a plain `python evaluate_fid.py` still
-# works on a CPU-only box.
+# FID evaluation is the pipeline bottleneck, so this requires a GPU by
+# default (see scripts/slurm/run_exp1_eval_array.sh's --gres=gpu:1) and dies
+# immediately if one isn't visible, rather than silently crawling on CPU for
+# hours -- pass --allow_cpu to opt into the slow path for local testing.
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-NUM_WORKERS = 4
+NUM_WORKERS = 16
 BATCH_SIZE = 128
 
 REAL_STATS_NAME = "mnist_real"
@@ -30,7 +30,16 @@ def _epoch_sort_key(schedule_dir: str) -> int:
     return int(match.group(1)) if match else -1
 
 
-def run_evaluation(shard: int, num_shards: int):
+def run_evaluation(shard: int, num_shards: int, allow_cpu: bool = False):
+    if DEVICE.type == "cpu" and not allow_cpu:
+        raise RuntimeError(
+            "No GPU visible (torch.cuda.is_available() is False) and --allow_cpu "
+            "wasn't passed. Refusing to silently fall back to a CPU run that would "
+            "take hours -- check --gres=gpu:1 was granted and the node's driver is "
+            "compatible with this venv's torch build, or pass --allow_cpu to run on "
+            "CPU anyway (e.g. for local testing)."
+        )
+
     # When run under the Slurm array (run_exp1_eval_array.sh), each shard
     # writes its own file so N concurrent array tasks never write to the
     # same master file at once. merge_fid_shards.py combines them afterward.
@@ -151,8 +160,13 @@ def main():
     parser.add_argument(
         "--num_shards", type=int, default=1, help="Total number of parallel shards/tasks"
     )
+    parser.add_argument(
+        "--allow_cpu",
+        action="store_true",
+        help="Allow running on CPU instead of dying when no GPU is visible (slow; for local testing)",
+    )
     args = parser.parse_args()
-    run_evaluation(args.shard, args.num_shards)
+    run_evaluation(args.shard, args.num_shards, allow_cpu=args.allow_cpu)
 
 
 if __name__ == "__main__":
