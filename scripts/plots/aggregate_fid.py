@@ -6,6 +6,7 @@ import re
 import statistics
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 # Matches e.g. "uniform_seed0" -> ("uniform", "0"),
 # "logit_normal_mu_0.0_sigma_1.0_seed3" -> ("logit_normal_mu_0.0_sigma_1.0", "3")
@@ -170,6 +171,90 @@ def plot_schedule_comparison(aggregated: dict, schedule: str, save_path: str):
     print(f"Plot successfully saved to {save_path} for sampling schedule '{schedule}'!")
 
 
+def plot_all_combined(aggregated: dict, save_path: str):
+    """One figure with every (training distribution, sampling schedule) curve
+    plotted together: color encodes training distribution, line style encodes
+    sampling schedule. No error bands -- with this many overlapping curves,
+    mean +/- std shading is unreadable, so this shows means only.
+    """
+    experiments = sorted(aggregated.keys())
+    schedules = sorted({s for exp in experiments for s in aggregated[exp].keys()})
+
+    color_cycle = plt.cm.tab10.colors
+    exp_colors = {exp: color_cycle[i % len(color_cycle)] for i, exp in enumerate(experiments)}
+
+    line_styles = ["-", "--", ":", "-."]
+    schedule_styles = {sched: line_styles[i % len(line_styles)] for i, sched in enumerate(schedules)}
+
+    plt.figure(figsize=(20, 14))
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    plotted_any = False
+    for exp in experiments:
+        for sched in schedules:
+            epoch_to_stats = aggregated[exp].get(sched)
+            if not epoch_to_stats:
+                continue
+            epochs, means, _ = _epochs_and_stats(epoch_to_stats)
+            if not epochs:
+                continue
+            plt.plot(
+                epochs,
+                means,
+                color=exp_colors[exp],
+                linestyle=schedule_styles[sched],
+                marker="o",
+                markersize=4,
+                linewidth=1.75,
+            )
+            plotted_any = True
+
+    if not plotted_any:
+        print("Error: No numeric epoch milestones found across any experiment.")
+        plt.close()
+        return
+
+    plt.title(
+        "FID vs. Training Epoch, All Training Distributions x Sampling Schedules "
+        "(mean across seeds)",
+        fontsize=14,
+        fontweight="bold",
+    )
+    plt.xlabel("Training Epoch", fontsize=13)
+    plt.ylabel("FID Score (Lower is Better)", fontsize=13)
+    plt.grid(True, linestyle="--", alpha=0.7)
+
+    color_handles = [
+        Line2D([0], [0], color=exp_colors[exp], linewidth=2, label=exp) for exp in experiments
+    ]
+    style_handles = [
+        Line2D([0], [0], color="black", linestyle=schedule_styles[sched], linewidth=2, label=sched)
+        for sched in schedules
+    ]
+    color_legend = plt.legend(
+        handles=color_handles,
+        title="Training Distribution",
+        fontsize=9,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+        borderaxespad=0.0,
+    )
+    plt.gca().add_artist(color_legend)
+    plt.legend(
+        handles=style_handles,
+        title="Sampling Schedule",
+        fontsize=9,
+        loc="lower left",
+        bbox_to_anchor=(1.02, 0.0),
+        borderaxespad=0.0,
+    )
+
+    plt.subplots_adjust(left=0.06, right=0.68, top=0.95, bottom=0.06)
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+    print(f"Combined plot saved to {save_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Aggregate per-seed FID results (master_fid_results.json) into "
@@ -178,13 +263,13 @@ def main():
     parser.add_argument(
         "--json_file",
         type=str,
-        default="master_fid_results.json",
+        default="results/master_fid_results.json",
         help="Path to the master per-seed FID results file from evaluate_fid.py",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="aggregated_fid_results.json",
+        default="results/aggregated_fid_results.json",
         help="Where to write the seed-aggregated (mean/std) results",
     )
     parser.add_argument(
@@ -202,11 +287,17 @@ def main():
         "fixed sampling schedule (e.g. 'uniform', 'shifted', 'logit_normal').",
     )
     parser.add_argument(
+        "--combined",
+        action="store_true",
+        help="If set, plot every (training distribution, sampling schedule) curve "
+        "together on one figure (means only, no error bands).",
+    )
+    parser.add_argument(
         "--save_path",
         type=str,
         default="fid_curves_aggregated.png",
-        help="Where to save the generated plot (only used with --experiment or "
-        "--compare_schedule)",
+        help="Where to save the generated plot (only used with --experiment, "
+        "--compare_schedule, or --combined)",
     )
     args = parser.parse_args()
 
@@ -226,7 +317,9 @@ def main():
     print(f"Aggregated results written to {args.output}")
     print(f"Base experiments found: {list(aggregated.keys())}")
 
-    if args.compare_schedule is not None:
+    if args.combined:
+        plot_all_combined(aggregated, args.save_path)
+    elif args.compare_schedule is not None:
         plot_schedule_comparison(aggregated, args.compare_schedule, args.save_path)
     elif args.experiment is not None:
         plot_experiment(aggregated, args.experiment, args.save_path)

@@ -13,7 +13,7 @@ def deep_merge(a: dict, b: dict) -> dict:
     return a
 
 
-SHARD_DIR = "fid_shards"
+SHARD_DIR = "results/fid_shards"
 
 
 def main():
@@ -27,13 +27,13 @@ def main():
         with open(path) as f:
             deep_merge(merged, json.load(f))
 
-    with open("master_fid_results.json", "w") as f:
+    with open("results/master_fid_results.json", "w") as f:
         json.dump(merged, f, indent=4)
 
     n_entries = sum(len(sched) for exp in merged.values() for sched in exp.values())
     print(
         f"Merged {len(shard_files)} shard files ({n_entries} total entries) "
-        "-> master_fid_results.json"
+        "-> results/master_fid_results.json"
     )
 
 

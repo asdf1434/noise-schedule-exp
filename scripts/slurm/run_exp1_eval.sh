@@ -6,11 +6,11 @@
 # all 10 run_exp1.sh array tasks have finished successfully, then chain the
 # rest with dependencies so you don't have to babysit squeue:
 #
-#   sbatch run_exp1_eval.sh
+#   sbatch scripts/slurm/run_exp1_eval.sh
 #   # note the job id it prints, e.g. "Submitted batch job 1100500"
-#   sbatch --dependency=afterok:1100500 run_exp1_eval_array.sh
+#   sbatch --dependency=afterok:1100500 scripts/slurm/run_exp1_eval_array.sh
 #   # note THAT job id too, e.g. "Submitted batch job 1100501"
-#   sbatch --dependency=afterok:1100501 run_exp1_eval_merge.sh
+#   sbatch --dependency=afterok:1100501 scripts/slurm/run_exp1_eval_merge.sh
 # ==========================================
 #SBATCH --job-name=exp1_pilot_eval_stats
 #SBATCH --account=vision-sitzmann
@@ -34,5 +34,5 @@ echo "========================================"
 python -u cache_real_stats.py
 
 echo -e "\n========================================"
-echo "Stats cached. Next: sbatch --dependency=afterok:$SLURM_JOB_ID run_exp1_eval_array.sh"
+echo "Stats cached. Next: sbatch --dependency=afterok:$SLURM_JOB_ID scripts/slurm/run_exp1_eval_array.sh"
 echo "========================================"

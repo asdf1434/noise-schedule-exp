@@ -56,5 +56,5 @@ fi
 echo -e "\n========================================"
 echo "Array task $IDX ($DIST seed $SEED) complete."
 echo "Once ALL 10 array tasks finish, run evaluate_fid.py separately -- see"
-echo "run_exp1_eval.sh (submit with --dependency=afterok:<this array job's ID>)."
+echo "scripts/slurm/run_exp1_eval.sh (submit with --dependency=afterok:<this array job's ID>)."
 echo "========================================"

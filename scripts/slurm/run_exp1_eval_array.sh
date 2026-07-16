@@ -14,7 +14,7 @@
 # ~2.5h/shard, comfortably inside it.
 #
 # Run AFTER run_exp1_eval.sh (real-image stats must already be cached):
-#   sbatch --dependency=afterok:<STATS_JOBID> run_exp1_eval_array.sh
+#   sbatch --dependency=afterok:<STATS_JOBID> scripts/slurm/run_exp1_eval_array.sh
 #
 # Each task writes its own master_fid_results_shard<N>.json -- run
 # run_exp1_eval_merge.sh afterward to combine them into master_fid_results.json.
@@ -46,5 +46,5 @@ python -u evaluate_fid.py --shard "$SLURM_ARRAY_TASK_ID" --num_shards "$NUM_SHAR
 echo -e "\n========================================"
 echo "Shard $SLURM_ARRAY_TASK_ID complete."
 echo "Once ALL $NUM_SHARDS array tasks finish, run merge_fid_shards.py -- see"
-echo "run_exp1_eval_merge.sh (submit with --dependency=afterok:<this array job's ID>)."
+echo "scripts/slurm/run_exp1_eval_merge.sh (submit with --dependency=afterok:<this array job's ID>)."
 echo "========================================"

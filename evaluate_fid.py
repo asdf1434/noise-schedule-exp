@@ -20,7 +20,7 @@ NUM_WORKERS = 4
 REAL_STATS_NAME = "mnist_real"
 REAL_DIR = "data/real"
 EVAL_RUNS_DIR = "eval_runs"
-SHARD_DIR = "fid_shards"
+SHARD_DIR = "results/fid_shards"
 
 
 def _epoch_sort_key(schedule_dir: str) -> int:
@@ -35,7 +35,7 @@ def run_evaluation(shard: int, num_shards: int):
     # With num_shards=1 (plain `python evaluate_fid.py`), this is just
     # master_fid_results.json directly.
     if num_shards == 1:
-        metrics_file = "master_fid_results.json"
+        metrics_file = "results/master_fid_results.json"
     else:
         os.makedirs(SHARD_DIR, exist_ok=True)
         metrics_file = os.path.join(SHARD_DIR, f"master_fid_results_shard{shard}.json")

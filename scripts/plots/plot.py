@@ -113,7 +113,7 @@ def main():
     parser.add_argument(
         "--json_file",
         type=str,
-        default="master_fid_results.json",
+        default="results/master_fid_results.json",
         help="Path to the master consolidated FID results file",
     )
     parser.add_argument(

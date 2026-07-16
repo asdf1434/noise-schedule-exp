@@ -6,7 +6,7 @@
 # master_fid_results.json.
 #
 # Run AFTER all 8 run_exp1_eval_array.sh tasks have finished:
-#   sbatch --dependency=afterok:<ARRAY_JOBID> run_exp1_eval_merge.sh
+#   sbatch --dependency=afterok:<ARRAY_JOBID> scripts/slurm/run_exp1_eval_merge.sh
 #
 # <ARRAY_JOBID> is the number sbatch printed when submitting
 # run_exp1_eval_array.sh (the array job id, not a per-task id like

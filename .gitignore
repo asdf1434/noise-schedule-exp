@@ -13,4 +13,5 @@ plots/
 *.md
 notes.md
 eval_runs/
-fid_shards/
+results/fid_shards/
+.DS_Store
