@@ -1,10 +1,12 @@
 import os
+import ssl
 from typing import Optional
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+import requests
 import tensorflow_datasets as tfds
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from PIL import Image
@@ -38,6 +40,104 @@ def get_mnist_dataloaders(batch_size: int, with_labels: bool = False):
 
     labels = jnp.array(np.stack(labels), dtype=jnp.int32)
     return images, labels
+
+
+# luminance weights for RGB -> grayscale
+_GRAY_WEIGHTS = jnp.array([0.299, 0.587, 0.114])
+
+# madm.dfki.de (EuroSAT's host) sends a misconfigured intermediate chain --
+# the leaf cert is issued by "HARICA GEANT TLS RSA 1", but the extra certs
+# the server sends are for an unrelated chain, so plain cert verification
+# fails with CERTIFICATE_VERIFY_FAILED even though the *root* (HARICA TLS RSA
+# Root CA 2021) is already in certifi's bundle. Fetch the one missing
+# intermediate from its own AIA URL (embedded in the leaf cert) and layer it
+# onto certifi's bundle -- this fixes verification without disabling it.
+_HARICA_GEANT_INTERMEDIATE_URL = "http://crt.harica.gr/HARICA-GEANT-TLS-R1.cer"
+
+
+def _eurosat_ca_bundle() -> str:
+    import certifi
+
+    cache_path = os.path.join(
+        "data", "tensorflow_datasets", ".eurosat_ca_bundle.pem"
+    )
+    if os.path.exists(cache_path):
+        return cache_path
+
+    intermediate_der = requests.get(_HARICA_GEANT_INTERMEDIATE_URL, timeout=15).content
+    intermediate_pem = ssl.DER_cert_to_PEM_cert(intermediate_der)
+
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    with open(certifi.where()) as f:
+        bundle = f.read()
+    with open(cache_path, "w") as f:
+        f.write(bundle + "\n" + intermediate_pem)
+    return cache_path
+
+
+def get_eurosat_dataloaders(batch_size: int, with_labels: bool = False):
+    """
+    load and pre-process EuroSAT (RGB variant) to look like MNIST input:
+    grayscale, resize 64->32, then center-crop 28x28
+    """
+
+    # tfds's registered eurosat download URL is still plain http://, which the
+    # host now 403s (https:// works fine) -- patch it in-place before loading.
+    import tensorflow_datasets.image_classification.eurosat as _eurosat_module
+
+    for _cfg in _eurosat_module.Eurosat.BUILDER_CONFIGS:
+        _cfg.download_url = _cfg.download_url.replace("http://", "https://")
+
+    # requests (used internally by tfds's downloader) honors this env var for
+    # the CA bundle -- see _eurosat_ca_bundle's docstring/comment above.
+    try:
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", _eurosat_ca_bundle())
+    except requests.RequestException:
+        pass  # fall back to default verification; download will just fail loudly
+
+    data_dir = os.path.join("data", "tensorflow_datasets")
+    ds = tfds.load("eurosat/rgb", split="train", as_supervised=True, data_dir=data_dir)
+    images = []
+    labels = []
+    for img, label in tfds.as_numpy(ds):
+        images.append(img)
+        labels.append(label)
+
+    images = np.stack(images).astype(np.float32)  # (N, 64, 64, 3)
+    images = jnp.array(images)
+
+    # grayscale via luminance weights -> (N, 64, 64, 1)
+    images = jnp.sum(images * _GRAY_WEIGHTS, axis=-1, keepdims=True)
+
+    # resize 64 -> 32
+    n = images.shape[0]
+    images = jax.image.resize(images, (n, 32, 32, 1), method="bilinear")
+
+    # center-crop 32 -> 28
+    offset = (32 - 28) // 2
+    images = images[:, offset : offset + 28, offset : offset + 28, :]
+
+    images = images / 127.5 - 1.0  # normalize to [-1, 1]
+
+    # convert from (N, H, W, C) to (N, C, H, W)
+    images = images.transpose(0, 3, 1, 2)
+
+    if not with_labels:
+        return images
+
+    labels = jnp.array(np.stack(labels), dtype=jnp.int32)
+    return images, labels
+
+
+_DATASET_LOADERS = {
+    "mnist": get_mnist_dataloaders,
+    "eurosat": get_eurosat_dataloaders,
+}
+
+
+def get_dataloaders(dataset: str, batch_size: int, with_labels: bool = False):
+    """dispatch to the right per-dataset loader (mnist, eurosat)"""
+    return _DATASET_LOADERS[dataset](batch_size=batch_size, with_labels=with_labels)
 
 
 def save_images(samples: np.ndarray, folder_name: str):

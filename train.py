@@ -30,7 +30,7 @@ with install_import_hook("src", "beartype.beartype"):
         sample_t_uniform,
     )
     from src.utils import (
-        get_mnist_dataloaders,
+        get_dataloaders,
         sample_batch_cond,
         sample_batch_x,
         save_images,
@@ -181,6 +181,14 @@ def main():
         choices=list(CONDITIONING.keys()),
         help="none, class (digit label), lowres (7x7), inpaint (left half given)",
     )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist",
+        choices=["mnist", "eurosat"],
+        help="eurosat is grayscaled, resized 64->32, and center-cropped to 28x28 "
+        "to match the mnist input format",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--eval_interval", type=int, default=10)
     parser.add_argument("--eval_samples", type=int, default=1000)
@@ -224,6 +232,7 @@ def main():
     exp_name = (
         f"{args.conditioning}_{base_name}" if args.conditioning != "none" else base_name
     )
+    exp_name = f"{args.dataset}_{exp_name}" if args.dataset != "mnist" else exp_name
     exp_name = f"{exp_name}_seed{args.seed}"
 
     os.makedirs(os.path.join("logs", "metrics"), exist_ok=True)
@@ -255,13 +264,15 @@ def main():
 
     opt_state = optim.init(eqx.filter(model, eqx.is_array))
 
-    print("load MNIST")
+    print(f"load {args.dataset}")
     if cond_spec["needs_labels"]:
-        all_images, all_labels = get_mnist_dataloaders(
-            batch_size=batch_size, with_labels=True
+        all_images, all_labels = get_dataloaders(
+            args.dataset, batch_size=batch_size, with_labels=True
         )
     else:
-        all_images = get_mnist_dataloaders(batch_size=batch_size, with_labels=False)
+        all_images = get_dataloaders(
+            args.dataset, batch_size=batch_size, with_labels=False
+        )
         all_labels = None
 
     # lowres/inpaint needs the actual images at eval time

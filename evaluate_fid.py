@@ -19,8 +19,14 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 16
 BATCH_SIZE = 128
 
-REAL_STATS_NAME = "mnist_real"
-REAL_DIR = "data/real"
+REAL_STATS_NAME = {
+    "mnist": "mnist_real",
+    "eurosat": "eurosat_real",
+}
+REAL_DIR = {
+    "mnist": "data/real",
+    "eurosat": "data/real_eurosat",
+}
 EVAL_RUNS_DIR = "eval_runs"
 SHARD_DIR = "results/fid_shards"
 
@@ -30,7 +36,17 @@ def _epoch_sort_key(schedule_dir: str) -> int:
     return int(match.group(1)) if match else -1
 
 
-def run_evaluation(shard: int, num_shards: int, allow_cpu: bool = False):
+def _belongs_to_dataset(experiment_name: str, dataset: str) -> bool:
+    # non-mnist datasets prefix their experiment names (see train.py), e.g.
+    # eurosat_uniform_seed42; mnist experiments carry no dataset prefix.
+    if dataset == "mnist":
+        return not experiment_name.startswith("eurosat_")
+    return experiment_name.startswith(f"{dataset}_")
+
+
+def run_evaluation(
+    shard: int, num_shards: int, dataset: str = "mnist", allow_cpu: bool = False
+):
     if DEVICE.type == "cpu" and not allow_cpu:
         raise RuntimeError(
             "No GPU visible (torch.cuda.is_available() is False) and --allow_cpu "
@@ -51,13 +67,16 @@ def run_evaluation(shard: int, num_shards: int, allow_cpu: bool = False):
         os.makedirs(SHARD_DIR, exist_ok=True)
         metrics_file = os.path.join(SHARD_DIR, f"master_fid_results_shard{shard}.json")
 
-    if not os.path.exists(REAL_DIR):
-        raise FileNotFoundError(f"Could not find your real images directory at: {REAL_DIR}")
+    real_dir = REAL_DIR[dataset]
+    real_stats_name = REAL_STATS_NAME[dataset]
 
-    if not fid.test_stats_exists(REAL_STATS_NAME, mode="clean"):
+    if not os.path.exists(real_dir):
+        raise FileNotFoundError(f"Could not find your real images directory at: {real_dir}")
+
+    if not fid.test_stats_exists(real_stats_name, mode="clean"):
         raise RuntimeError(
-            f"Real-image FID stats '{REAL_STATS_NAME}' aren't cached yet. Run "
-            "cache_real_stats.py once first (see run_exp1_eval_stats.sh)."
+            f"Real-image FID stats '{real_stats_name}' aren't cached yet. Run "
+            f"cache_real_stats.py --dataset {dataset} once first (see run_exp1_eval_stats.sh)."
         )
 
     # Built once per process (not per folder) -- rebuilding the InceptionV3
@@ -65,7 +84,7 @@ def run_evaluation(shard: int, num_shards: int, allow_cpu: bool = False):
     # folder would dominate GPU wall-clock for these small (~1000-image) sets.
     feat_model = fid.build_feature_extractor("clean", DEVICE)
     ref_mu, ref_sigma = fid.get_reference_statistics(
-        REAL_STATS_NAME, res="na", mode="clean", split="custom"
+        real_stats_name, res="na", mode="clean", split="custom"
     )
 
     print("==================================================")
@@ -74,10 +93,13 @@ def run_evaluation(shard: int, num_shards: int, allow_cpu: bool = False):
     # epoch level would silently merge all sampling schedules into one FID number.)
     schedule_dirs = glob.glob(os.path.join(EVAL_RUNS_DIR, "*", "epoch_*", "*"))
     schedule_dirs = [d for d in schedule_dirs if os.path.isdir(d)]
+    schedule_dirs = [
+        d for d in schedule_dirs if _belongs_to_dataset(Path(d).parts[1], dataset)
+    ]
     schedule_dirs = sorted(schedule_dirs, key=_epoch_sort_key)
 
     if not schedule_dirs:
-        print("No evaluation directories found in 'eval_runs/'.")
+        print(f"No evaluation directories found in 'eval_runs/' for dataset={dataset}.")
         return
 
     # results[experiment_name][schedule_name][epoch_str] = fid_score
@@ -165,8 +187,17 @@ def main():
         action="store_true",
         help="Allow running on CPU instead of dying when no GPU is visible (slow; for local testing)",
     )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist",
+        choices=["mnist", "eurosat"],
+        help="which dataset's eval_runs/ experiments to score (run once per dataset)",
+    )
     args = parser.parse_args()
-    run_evaluation(args.shard, args.num_shards, allow_cpu=args.allow_cpu)
+    run_evaluation(
+        args.shard, args.num_shards, dataset=args.dataset, allow_cpu=args.allow_cpu
+    )
 
 
 if __name__ == "__main__":
