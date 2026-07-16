@@ -5,6 +5,16 @@ pillow
 importlib_resources
 tensorflow-cpu
 tensorflow-datasets
-clean-fid
 matplotlib
 beartype
+
+# clean-fid pulls in torch/torchvision unpinned, which resolves to the latest
+# build (e.g. cu130) -- too new for the cluster's GPU drivers (max CUDA 12.9
+# as of 2026-07-16, confirmed via evaluate_fid.py's GPU sweep failing with
+# "CUDA initialization: driver too old" on 2.13.0+cu130). Pin to a cu121
+# build instead: broadly compatible with drivers back to 525.60.13, well
+# under the cluster's floor.
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.4.1+cu121
+torchvision==0.19.1+cu121
+clean-fid
