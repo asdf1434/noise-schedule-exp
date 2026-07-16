@@ -18,17 +18,28 @@
 # evaluate_fid.py's resume logic, so it's safe to rerun the train stage
 # too as long as train.py's own resume/skip behavior covers it).
 #
-# Usage: scripts/slurm/run_pipeline.sh <train_script.sh>
+# Usage: scripts/slurm/run_pipeline.sh <train_script.sh> [eval_stats.sh] [eval_array.sh] [eval_merge.sh]
+# The three eval scripts default to the exp1/MNIST ones, so existing calls
+# don't need to change. For EuroSAT, pass its eval scripts explicitly since
+# they cache/score against the eurosat_real reference set instead of mnist:
+#
 # Example: scripts/slurm/run_pipeline.sh scripts/slurm/run_exp1.sh
 #          scripts/slurm/run_pipeline.sh scripts/slurm/run_exp2.sh
+#          scripts/slurm/run_pipeline.sh scripts/slurm/run_eurosat.sh \
+#              scripts/slurm/run_eurosat_eval.sh \
+#              scripts/slurm/run_eurosat_eval_array.sh \
+#              scripts/slurm/run_eurosat_eval_merge.sh
 # ==========================================
 
 set -e
 
 TRAIN_SCRIPT=$1
+STATS_SCRIPT=${2:-scripts/slurm/run_exp1_eval.sh}
+EVAL_ARRAY_SCRIPT=${3:-scripts/slurm/run_exp1_eval_array.sh}
+EVAL_MERGE_SCRIPT=${4:-scripts/slurm/run_exp1_eval_merge.sh}
 
 if [ -z "$TRAIN_SCRIPT" ]; then
-    echo "Usage: $0 <train_script.sh>" >&2
+    echo "Usage: $0 <train_script.sh> [eval_stats.sh] [eval_array.sh] [eval_merge.sh]" >&2
     echo "Example: $0 scripts/slurm/run_exp1.sh" >&2
     exit 1
 fi
@@ -38,14 +49,14 @@ mkdir -p logs/slurm
 TRAIN_JOBID=$(sbatch --parsable "$TRAIN_SCRIPT")
 echo "1/4 train array:  job $TRAIN_JOBID  ($TRAIN_SCRIPT)"
 
-STATS_JOBID=$(sbatch --parsable --dependency=afterok:"$TRAIN_JOBID" scripts/slurm/run_exp1_eval.sh)
-echo "2/4 real stats:    job $STATS_JOBID  (after $TRAIN_JOBID)"
+STATS_JOBID=$(sbatch --parsable --dependency=afterok:"$TRAIN_JOBID" "$STATS_SCRIPT")
+echo "2/4 real stats:    job $STATS_JOBID  (after $TRAIN_JOBID, $STATS_SCRIPT)"
 
-EVAL_JOBID=$(sbatch --parsable --dependency=afterok:"$STATS_JOBID" scripts/slurm/run_exp1_eval_array.sh)
-echo "3/4 FID eval array: job $EVAL_JOBID  (after $STATS_JOBID)"
+EVAL_JOBID=$(sbatch --parsable --dependency=afterok:"$STATS_JOBID" "$EVAL_ARRAY_SCRIPT")
+echo "3/4 FID eval array: job $EVAL_JOBID  (after $STATS_JOBID, $EVAL_ARRAY_SCRIPT)"
 
-MERGE_JOBID=$(sbatch --parsable --dependency=afterok:"$EVAL_JOBID" scripts/slurm/run_exp1_eval_merge.sh)
-echo "4/4 merge:         job $MERGE_JOBID  (after $EVAL_JOBID)"
+MERGE_JOBID=$(sbatch --parsable --dependency=afterok:"$EVAL_JOBID" "$EVAL_MERGE_SCRIPT")
+echo "4/4 merge:         job $MERGE_JOBID  (after $EVAL_JOBID, $EVAL_MERGE_SCRIPT)"
 
 echo ""
 echo "Submitted. Track with: squeue -u \$USER"

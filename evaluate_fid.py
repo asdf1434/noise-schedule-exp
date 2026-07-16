@@ -56,16 +56,23 @@ def run_evaluation(
             "CPU anyway (e.g. for local testing)."
         )
 
-    # When run under the Slurm array (run_exp1_eval_array.sh), each shard
-    # writes its own file so N concurrent array tasks never write to the
-    # same master file at once. merge_fid_shards.py combines them afterward.
+    # When run under the Slurm array (run_exp1_eval_array.sh /
+    # run_eurosat_eval_array.sh), each shard writes its own file so N
+    # concurrent array tasks never write to the same master file at once.
+    # merge_fid_shards.py combines them afterward. The dataset is folded into
+    # the shard filename so a mnist eval array and a eurosat eval array can
+    # run concurrently without clobbering each other's shard files -- both
+    # still merge into the one shared master_fid_results.json since they key
+    # off disjoint (prefixed vs. unprefixed) experiment names.
     # With num_shards=1 (plain `python evaluate_fid.py`), this is just
     # master_fid_results.json directly.
     if num_shards == 1:
         metrics_file = "results/master_fid_results.json"
     else:
         os.makedirs(SHARD_DIR, exist_ok=True)
-        metrics_file = os.path.join(SHARD_DIR, f"master_fid_results_shard{shard}.json")
+        metrics_file = os.path.join(
+            SHARD_DIR, f"master_fid_results_shard{shard}_{dataset}.json"
+        )
 
     real_dir = REAL_DIR[dataset]
     real_stats_name = REAL_STATS_NAME[dataset]

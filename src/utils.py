@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import requests
 import tensorflow_datasets as tfds
+import tqdm
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from PIL import Image
 
@@ -97,16 +98,19 @@ def get_eurosat_dataloaders(batch_size: int, with_labels: bool = False):
 
     data_dir = os.path.join("data", "tensorflow_datasets")
     ds = tfds.load("eurosat/rgb", split="train", as_supervised=True, data_dir=data_dir)
+    print("Decoding eurosat examples...")
     images = []
     labels = []
-    for img, label in tfds.as_numpy(ds):
+    for img, label in tqdm.tqdm(tfds.as_numpy(ds), total=27000, unit="img"):
         images.append(img)
         labels.append(label)
 
+    print("Stacking into one array...")
     images = np.stack(images).astype(np.float32)  # (N, 64, 64, 3)
     images = jnp.array(images)
 
     # grayscale via luminance weights -> (N, 64, 64, 1)
+    print("Grayscaling + resizing 64->32 + cropping to 28x28...")
     images = jnp.sum(images * _GRAY_WEIGHTS, axis=-1, keepdims=True)
 
     # resize 64 -> 32

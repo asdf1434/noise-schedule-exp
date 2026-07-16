@@ -9,6 +9,7 @@ matplotlib
 beartype
 requests
 certifi
+tqdm
 
 # clean-fid pulls in torch/torchvision unpinned, which resolves to the latest
 # build (e.g. cu130) -- too new for the cluster's GPU drivers (max CUDA 12.9
