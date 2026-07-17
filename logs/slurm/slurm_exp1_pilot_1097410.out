@@ -1,150 +1,0 @@
-cpu-bind=MASK - inspector-gadget.drl, task  0  0 [3844026]: mask 0x30000000003 set
-========================================
-does training-time noise distribution / inference-time sampling actually affect FID
-
-2 training distributions (uniform, logit_normal mu=0.0 sigma=1.0) x 5 seeds = 10 runs
-each run scored against all 4 sampling schedules automatically
-========================================
-
->>> [seed 0] Uniform baseline
-init model
-load MNIST
-WARNING:absl:Variant folder data/tensorflow_datasets/mnist/3.0.1 has no dataset_info.json
-Downloading and preparing dataset Unknown size (download: Unknown size, generated: Unknown size, total: Unknown size) to data/tensorflow_datasets/mnist/3.0.1...
-Dl Completed...: 0 url [00:00, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/1 [00:00<?, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/2 [00:00<?, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/3 [00:00<?, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/4 [00:00<?, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/4 [00:00<?, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/4 [00:00<?, ? url/s]
-Dl Size...: 0 MiB [00:00, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/4 [00:00<?, ? url/s]
-Dl Size...:   0%|          | 0/9 [00:00<?, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:   0%|          | 0/4 [00:00<?, ? url/s]
-Dl Size...:   0%|          | 0/10 [00:00<?, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  25%|██▌       | 1/4 [00:00<00:02,  1.49 url/s]
-Dl Size...:   0%|          | 0/10 [00:00<?, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  50%|█████     | 2/4 [00:00<00:00,  2.94 url/s]
-Dl Size...:   0%|          | 0/10 [00:00<?, ? MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  50%|█████     | 2/4 [00:00<00:00,  2.70 url/s]
-Dl Size...:  10%|█         | 1/10 [00:00<00:06,  1.35 MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  50%|█████     | 2/4 [00:00<00:00,  2.67 url/s]
-Dl Size...:  20%|██        | 2/10 [00:00<00:02,  2.67 MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  50%|█████     | 2/4 [00:00<00:00,  2.65 url/s]
-Dl Size...:  30%|███       | 3/10 [00:00<00:01,  3.98 MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  50%|█████     | 2/4 [00:00<00:00,  2.62 url/s]
-Dl Size...:  40%|████      | 4/10 [00:00<00:01,  5.24 MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  50%|█████     | 2/4 [00:00<00:00,  2.59 url/s]
-Dl Size...:  50%|█████     | 5/10 [00:00<00:00,  6.48 MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[ADl Completed...:  75%|███████▌  | 3/4 [00:00<00:00,  3.77 url/s]
-Dl Size...:  50%|█████     | 5/10 [00:00<00:00,  6.29 MiB/s][A
-
-Extraction completed...: 0 file [00:00, ? file/s][A[AWARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-I0000 00:00:1783925539.191280 3844715 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-
-Dl Size...:  60%|██████    | 6/10 [00:06<00:04,  1.03s/ MiB][ADl Completed...:  75%|███████▌  | 3/4 [00:06<00:02,  2.06s/ url]
-Dl Size...:  60%|██████    | 6/10 [00:06<00:04,  1.03s/ MiB][A
-
-Extraction completed...: 0 file [00:06, ? file/s][A[ADl Completed...:  75%|███████▌  | 3/4 [00:06<00:02,  2.07s/ url]
-Dl Size...:  70%|███████   | 7/10 [00:06<00:03,  1.03s/ MiB][A
-
-Extraction completed...: 0 file [00:06, ? file/s][A[ADl Completed...:  75%|███████▌  | 3/4 [00:06<00:02,  2.07s/ url]
-Dl Size...:  80%|████████  | 8/10 [00:06<00:02,  1.03s/ MiB][A
-
-Extraction completed...: 0 file [00:06, ? file/s][A[ADl Completed...:  75%|███████▌  | 3/4 [00:06<00:02,  2.07s/ url]
-Dl Size...:  90%|█████████ | 9/10 [00:06<00:01,  1.03s/ MiB][A
-
-Extraction completed...: 0 file [00:06, ? file/s][A[ADl Completed...:  75%|███████▌  | 3/4 [00:06<00:02,  2.08s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:06<00:00,  1.03s/ MiB][A
-
-Extraction completed...: 0 file [00:06, ? file/s][A[ADl Completed...: 100%|██████████| 4/4 [00:06<00:00,  1.58s/ url]Dl Completed...: 100%|██████████| 4/4 [00:06<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:06<00:00,  1.03s/ MiB][A
-
-Extraction completed...: 0 file [00:06, ? file/s][A[AWARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-I0000 00:00:1783925555.438592 3844715 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-Dl Completed...: 100%|██████████| 4/4 [00:26<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:26<00:00,  1.03s/ MiB][A
-
-Extraction completed...:   0%|          | 0/1 [00:26<?, ? file/s][A[ADl Completed...: 100%|██████████| 4/4 [00:26<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:26<00:00,  1.03s/ MiB][A
-
-Extraction completed...:   0%|          | 0/2 [00:26<?, ? file/s][A[A
-
-Extraction completed...:  50%|█████     | 1/2 [00:26<00:26, 26.62s/ file][A[ADl Completed...: 100%|██████████| 4/4 [00:26<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:26<00:00,  1.03s/ MiB][A
-
-Extraction completed...:  50%|█████     | 1/2 [00:26<00:26, 26.62s/ file][A[ADl Completed...: 100%|██████████| 4/4 [00:26<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:26<00:00,  1.03s/ MiB][A
-
-Extraction completed...: 100%|██████████| 2/2 [00:26<00:00, 26.62s/ file][A[ADl Completed...: 100%|██████████| 4/4 [00:26<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:26<00:00,  1.03s/ MiB][A
-
-Extraction completed...:  67%|██████▋   | 2/3 [00:26<00:26, 26.62s/ file][A[ADl Completed...: 100%|██████████| 4/4 [00:26<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:26<00:00,  1.03s/ MiB][A
-
-Extraction completed...: 100%|██████████| 3/3 [00:26<00:00, 26.62s/ file][A[ADl Completed...: 100%|██████████| 4/4 [00:27<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:27<00:00,  1.03s/ MiB][A
-
-Extraction completed...:  75%|███████▌  | 3/4 [00:27<00:26, 26.62s/ file][A[ADl Completed...: 100%|██████████| 4/4 [00:27<00:00,  1.58s/ url]
-Dl Size...: 100%|██████████| 10/10 [00:27<00:00,  1.03s/ MiB][A
-
-Extraction completed...: 100%|██████████| 4/4 [00:27<00:00, 26.62s/ file][A[AExtraction completed...: 100%|██████████| 4/4 [00:27<00:00,  6.89s/ file]
-Dl Size...: 100%|██████████| 10/10 [00:27<00:00,  2.76s/ MiB]
-Dl Completed...: 100%|██████████| 4/4 [00:27<00:00,  6.89s/ url]
-Generating splits...:   0%|          | 0/2 [00:00<?, ? splits/s]
-Generating train examples...: 0 examples [00:00, ? examples/s][A
-Generating train examples...: 1940 examples [00:01, 1939.74 examples/s][A
-Generating train examples...: 7065 examples [00:02, 3812.86 examples/s][A
-Generating train examples...: 12212 examples [00:03, 4421.97 examples/s][A
-Generating train examples...: 17341 examples [00:04, 4700.75 examples/s][A
-Generating train examples...: 22442 examples [00:05, 4844.99 examples/s][A
-Generating train examples...: 27553 examples [00:06, 4935.18 examples/s][A
-Generating train examples...: 32670 examples [00:07, 4994.34 examples/s][A
-Generating train examples...: 37800 examples [00:08, 5037.39 examples/s][A
-Generating train examples...: 42906 examples [00:09, 5058.73 examples/s][A
-Generating train examples...: 48010 examples [00:10, 5072.52 examples/s][A
-Generating train examples...: 53090 examples [00:11, 5074.63 examples/s][A
-Generating train examples...: 58186 examples [00:12, 5081.09 examples/s][A
-                                                                        [A
-Shuffling data/tensorflow_datasets/mnist/incomplete.Z9UU05_3.0.1/mnist-train.tfrecord-[0-9][0-9][0-9][0-9][0-9]-of-[0-9][0-9][0-9][0-9][0-9]...:   0%|          | 0/60000 [00:00<?, ? examples/s][A
-                                                                                                                                                                                                 [AGenerating splits...:  50%|█████     | 1/2 [00:12<00:12, 12.73s/ splits]
-Generating test examples...: 0 examples [00:00, ? examples/s][A
-Generating test examples...: 4602 examples [00:01, 4601.82 examples/s][A
-Generating test examples...: 9706 examples [00:02, 4897.14 examples/s][A
-                                                                      [A
-Shuffling data/tensorflow_datasets/mnist/incomplete.Z9UU05_3.0.1/mnist-test.tfrecord-[0-9][0-9][0-9][0-9][0-9]-of-[0-9][0-9][0-9][0-9][0-9]...:   0%|          | 0/10000 [00:00<?, ? examples/s][A
-                                                                                                                                                                                                [AGenerating splits...: 100%|██████████| 2/2 [00:14<00:00,  6.49s/ splits]                                                                        Dataset mnist downloaded and prepared to data/tensorflow_datasets/mnist/3.0.1. Subsequent calls will reuse this data.
-training for 100 epochs using uniform distribution with conditioning=none
-log training metrics to: logs/metrics/metrics_uniform_seed0.jsonl
-Epoch 1/100 | Loss: 0.6188 | Time: 34.29s
-Epoch 2/100 | Loss: 0.2040 | Time: 24.58s
-Epoch 3/100 | Loss: 0.1965 | Time: 24.95s
-Epoch 4/100 | Loss: 0.1910 | Time: 24.88s
-Epoch 5/100 | Loss: 0.1892 | Time: 25.01s
-Epoch 6/100 | Loss: 0.1862 | Time: 24.90s
-Epoch 7/100 | Loss: 0.1938 | Time: 25.14s
-Epoch 8/100 | Loss: 0.1813 | Time: 24.86s
-[2026-07-13T02:57:04.535] error: *** JOB 1097410 ON inspector-gadget.drl CANCELLED AT 2026-07-13T02:57:04 DUE to SIGNAL Terminated ***
