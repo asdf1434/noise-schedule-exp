@@ -1,4 +1,11 @@
-jax
+# [cuda12] pulls in matching nvidia-cudnn-cu12/nvidia-cublas-cu12 etc. wheels
+# for jaxlib's CUDA plugin. Without this extra, jaxlib still finds a
+# jax-cuda12-plugin install (if one's present) but falls back to whatever
+# cuDNN happens to be on the node's system path -- on this cluster that's an
+# old 9.1.0, while jaxlib expects >=9.8.0, causing a hard-to-diagnose
+# "DNN library initialization failed" crash at the first real jax op that's
+# identical across every node (not node-specific flakiness).
+jax[cuda12]
 equinox
 optax
 pillow

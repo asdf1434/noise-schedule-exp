@@ -43,8 +43,11 @@ def get_mnist_dataloaders(batch_size: int, with_labels: bool = False):
     return images, labels
 
 
-# luminance weights for RGB -> grayscale
-_GRAY_WEIGHTS = jnp.array([0.299, 0.587, 0.114])
+# luminance weights for RGB -> grayscale. Plain tuple, not a jnp.array, so
+# importing this module never forces JAX to initialize its GPU/cuDNN backend
+# as a side effect -- that should only happen once train.py's own "no GPU
+# visible" check has had a chance to run and fail cleanly.
+_GRAY_WEIGHTS = (0.299, 0.587, 0.114)
 
 # madm.dfki.de (EuroSAT's host) sends a misconfigured intermediate chain --
 # the leaf cert is issued by "HARICA GEANT TLS RSA 1", but the extra certs
@@ -111,7 +114,7 @@ def get_eurosat_dataloaders(batch_size: int, with_labels: bool = False):
 
     # grayscale via luminance weights -> (N, 64, 64, 1)
     print("Grayscaling + resizing 64->32 + cropping to 28x28...")
-    images = jnp.sum(images * _GRAY_WEIGHTS, axis=-1, keepdims=True)
+    images = jnp.sum(images * jnp.array(_GRAY_WEIGHTS), axis=-1, keepdims=True)
 
     # resize 64 -> 32
     n = images.shape[0]
