@@ -1,4 +1,5 @@
-# WRITTEN BY CLAUDE
+# FID is run sharded across many devices
+# this script merges all of the results into a single json file
 
 import glob
 import json

@@ -8,13 +8,21 @@ import statistics
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-# Matches e.g. "uniform_seed0" -> ("uniform", "0"),
+from src.naming import base_name as canonical_base_name
+
+# Legacy pre-rename experiments (exp1/2/3) predate the ds-/cond-/dist-/seed-
+# scheme and were never migrated; matches e.g. "uniform_seed0" -> ("uniform", "0"),
 # "logit_normal_mu_0.0_sigma_1.0_seed3" -> ("logit_normal_mu_0.0_sigma_1.0", "3")
-SEED_SUFFIX_RE = re.compile(r"^(?P<base>.+)_seed(?P<seed>\d+)$")
+LEGACY_SEED_SUFFIX_RE = re.compile(r"^(?P<base>.+)_seed(?P<seed>\d+)$")
 
 
 def split_base_and_seed(experiment_name: str) -> tuple[str, str | None]:
-    match = SEED_SUFFIX_RE.match(experiment_name)
+    try:
+        parsed = canonical_base_name(experiment_name)
+        return parsed, str(experiment_name.rsplit("seed-", 1)[1])
+    except ValueError:
+        pass
+    match = LEGACY_SEED_SUFFIX_RE.match(experiment_name)
     if match is None:
         return experiment_name, None
     return match.group("base"), match.group("seed")

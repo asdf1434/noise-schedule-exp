@@ -21,6 +21,7 @@ with install_import_hook("src", "beartype.beartype"):
     from src.conditioning import CONDITIONING
     from src.loss import compute_loss_cond
     from src.model import UNet
+    from src.naming import make_exp_name
     from src.schedules import (
         get_logit_normal_cdf_steps,
         get_shifted_steps,
@@ -226,14 +227,9 @@ def main():
 
     cond_spec = CONDITIONING[args.conditioning]
 
-    # this part is taken directly from claude to generate names
-    param_str = "_".join([f"{k}_{v}" for k, v in dist_kwargs.items()])
-    base_name = f"{args.train_dist}_{param_str}" if param_str else args.train_dist
-    exp_name = (
-        f"{args.conditioning}_{base_name}" if args.conditioning != "none" else base_name
+    exp_name = make_exp_name(
+        args.dataset, args.conditioning, args.train_dist, dist_kwargs, args.seed
     )
-    exp_name = f"{args.dataset}_{exp_name}" if args.dataset != "mnist" else exp_name
-    exp_name = f"{exp_name}_seed{args.seed}"
 
     os.makedirs(os.path.join("logs", "metrics", exp_name), exist_ok=True)
 
