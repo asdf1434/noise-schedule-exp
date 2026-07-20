@@ -34,7 +34,7 @@
 # isola-2080ti-4, gpu19-2.drl, gpu20-2.drl: reliably fail CUDA init. improbablex002
 # segfaults inside torch/clean-fid's CUDA init. Same known-bad nodes excluded
 # in run_eurosat.sh -- see its header for the full rationale.
-#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl
+#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
