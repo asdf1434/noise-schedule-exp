@@ -30,7 +30,7 @@
 #SBATCH --job-name=eurosat64_train_dists
 #SBATCH --account=vision-sitzmann
 #SBATCH --qos=lab-free
-#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-v100,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
+#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
 # isola-2080ti-4, gpu19-2.drl, gpu20-2.drl: reliably fail CUDA init. improbablex002
 # segfaults inside torch/clean-fid's CUDA init. Same known-bad nodes excluded
 # in run_eurosat.sh -- see its header for the full rationale.
