@@ -235,15 +235,15 @@ def main():
     exp_name = f"{args.dataset}_{exp_name}" if args.dataset != "mnist" else exp_name
     exp_name = f"{exp_name}_seed{args.seed}"
 
-    os.makedirs(os.path.join("logs", "metrics"), exist_ok=True)
+    os.makedirs(os.path.join("logs", "metrics", exp_name), exist_ok=True)
 
     # Assign log filename based on experiment name if not explicitly passed
     if args.log_file is None:
-        # Prepend the logs/metrics/ path here!
-        args.log_file = os.path.join("logs", "metrics", f"metrics_{exp_name}.jsonl")
+        # Prepend the logs/metrics/<exp_name>/ path here!
+        args.log_file = os.path.join("logs", "metrics", exp_name, "metrics.jsonl")
     else:
         # If a custom log file was passed via command line, make sure it goes there too
-        args.log_file = os.path.join("logs", "metrics", args.log_file)
+        args.log_file = os.path.join("logs", "metrics", exp_name, args.log_file)
 
     batch_size = 128
 
