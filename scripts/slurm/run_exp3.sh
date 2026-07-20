@@ -19,13 +19,35 @@
 #SBATCH --job-name=exp3_sigma_sweep
 #SBATCH --account=vision-sitzmann
 #SBATCH --qos=lab-free
-#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-v100,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
+# Dropped vision-shared-rtx2080ti, vision-shared-titanrtx, and
+# vision-shared-v100 (Turing/Volta) after confirming on beery-a100-1 (0MiB
+# used, no other processes) that a completely idle old-arch-class GPU still
+# hits the cuDNN status-5003 conv failure while an idle A100 runs clean --
+# this is an architecture incompatibility, not contention, so excluding
+# individual nodes was never going to fully fix it. rtx3090/rtx3080 are
+# also Ampere like a100 and kept since they should behave the same way.
+#SBATCH --partition=vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
 # Union of every bad node found across all slurm scripts to date:
 # isola-2080ti-4, gpu19-2.drl, gpu20-2.drl (reliable cuInit failures, found in
 # run_exp2.sh) plus improbablex002, isola-ada6000-1, and gpu19-1.drl (found
 # later during the EuroSAT runs -- gpu19-1.drl was thought to be fine when
 # run_exp2.sh was written, but run_eurosat.sh later excluded it too).
-#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,isola-ada6000-1,gpu19-1.drl
+#
+# gpu20-3.drl added here after job 1123254: 80 cuDNN-autotune failures,
+# far more than any other node on a partition (vision-shared-rtx2080ti)
+# that's otherwise still in use -- looks like a genuinely broken node on
+# top of the architecture issue below, so excluded explicitly. The other
+# repeat offenders from that job (agrawal-v100-1, freeman-v100-1,
+# torralba-v100-1/2, isola-v100-2, freeman-titanrtx-2, up to 80
+# failures each) don't need individual --exclude entries: they're all
+# v100/titanrtx nodes, already unreachable now that vision-shared-v100 and
+# vision-shared-titanrtx were dropped from --partition above.
+#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,isola-ada6000-1,gpu19-1.drl,gpu20-3.drl
+# Auto-resubmit a task if SLURM kills it (preemption, node failure) instead
+# of requiring a manual requeue_failed.sh pass. Doesn't distinguish
+# contention/preemption from a genuine code bug -- if train.py itself is
+# broken, this will retry it fruitlessly, so still check logs occasionally.
+#SBATCH --requeue
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
@@ -39,6 +61,21 @@ mkdir -p logs/slurm
 mkdir -p logs/metrics
 
 source venv/bin/activate
+
+# Every observed failure in this job is the identical cuDNN autotune error
+# ("Failed to determine best cudnn convolution algorithm", status 5003) for
+# the same conv shape -- and critically, it now reproduces on EVERY node
+# (not just old-arch/flaky ones), including at actual kernel execution
+# time, not just during algorithm autotuning. That rules out "one bad
+# node"; a uniform failure across all node types on a heavily shared
+# cluster points at GPU memory pressure instead: JAX preallocates ~90% of
+# a GPU's VRAM by default the instant it touches the device, which can
+# starve cuDNN's conv kernels if SLURM's GPU isolation lets another
+# process share the same physical GPU. Disabling preallocation makes JAX
+# grow its allocation on demand instead, which is the standard fix for
+# this failure mode on shared clusters.
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_FLAGS="--xla_gpu_strict_conv_algorithm_picker=false"
 
 # ==========================================
 # Map array task ID -> (sigma, seed)
