@@ -19,6 +19,7 @@ from jaxtyping import Array, Float, Int, PRNGKeyArray, install_import_hook
 # so mismatched array shapes fail loudly instead of silently propagating.
 with install_import_hook("src", "beartype.beartype"):
     from src.conditioning import CONDITIONING
+    from src.datasets import DATASETS
     from src.loss import compute_loss_cond
     from src.model import UNet
     from src.naming import make_exp_name
@@ -46,7 +47,7 @@ optim = optax.adam(LEARNING_RATE)
 def make_step(
     model: eqx.Module,
     opt_state: optax.OptState,
-    clean_images: Float[Array, "batch 1 28 28"],
+    clean_images: Float[Array, "batch 1 h w"],
     key: PRNGKeyArray,
     sample_t_fn: Callable,  # training schedule
     conditioning: str,
@@ -83,7 +84,8 @@ def export_evaluation_images(
     epoch: int,
     conditioning: str,
     num_steps: int,
-    eval_ref_images: Optional[Float[Array, "n 1 28 28"]] = None,
+    image_shape: tuple,
+    eval_ref_images: Optional[Float[Array, "n 1 h w"]] = None,
 ):
     """
     generate and save samples for different inference schedules
@@ -124,7 +126,7 @@ def export_evaluation_images(
 
             if conditioning == "none":
                 batch_samples = sample_batch_x(
-                    model, sample_key, timesteps, eval_batch_size
+                    model, sample_key, timesteps, eval_batch_size, image_shape
                 )
             else:
                 batch_samples = sample_batch_cond(
@@ -135,6 +137,7 @@ def export_evaluation_images(
                     eval_batch_size,
                     cond_images=cond_images,
                     labels=labels,
+                    image_shape=image_shape,
                 )
             all_samples.append(np.array(batch_samples))
 
@@ -186,9 +189,10 @@ def main():
         "--dataset",
         type=str,
         default="mnist",
-        choices=["mnist", "eurosat"],
-        help="eurosat is grayscaled, resized 64->32, and center-cropped to 28x28 "
-        "to match the mnist input format",
+        choices=list(DATASETS),
+        help="mnist/eurosat are 28x28; eurosat64 keeps native 64x64. Image "
+        "geometry (size + channels) is read from the dataset registry in "
+        "src/datasets.py -- add an entry there to support a new dataset.",
     )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--eval_interval", type=int, default=10)
@@ -226,6 +230,10 @@ def main():
     model_kwargs = json.loads(args.model_params)
 
     cond_spec = CONDITIONING[args.conditioning]
+    ds_spec = DATASETS[args.dataset]
+    # image geometry is derived from the dataset registry, not hardcoded to
+    # 28x28 -- this is what lets a 64x64 dataset (e.g. eurosat64) train/sample.
+    image_shape = (ds_spec.channels, ds_spec.image_size, ds_spec.image_size)
 
     exp_name = make_exp_name(
         args.dataset, args.conditioning, args.train_dist, dist_kwargs, args.seed
@@ -309,7 +317,9 @@ def main():
         indices = jax.random.permutation(shuffle_key, len(dataloader))
 
         shuffled_data = dataloader[indices][: num_batches * batch_size]
-        batched_data = shuffled_data.reshape(num_batches, batch_size, 1, 28, 28)
+        batched_data = shuffled_data.reshape(
+            num_batches, batch_size, *image_shape
+        )
 
         if train_labels is not None:
             shuffled_labels = train_labels[indices][: num_batches * batch_size]
@@ -348,6 +358,7 @@ def main():
                 epoch,
                 args.conditioning,
                 args.num_steps,
+                image_shape,
                 eval_ref_images,
             )
 

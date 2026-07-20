@@ -5,17 +5,10 @@ import argparse
 import torch
 from cleanfid import fid
 
+from src.datasets import DATASETS
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 8
-
-REAL_STATS_NAME = {
-    "mnist": "mnist_real",
-    "eurosat": "eurosat_real",
-}
-REAL_DIR = {
-    "mnist": "data/real",
-    "eurosat": "data/real_eurosat",
-}
 
 
 def main():
@@ -24,12 +17,12 @@ def main():
         "--dataset",
         type=str,
         default="mnist",
-        choices=["mnist", "eurosat"],
+        choices=list(DATASETS),
     )
     args = parser.parse_args()
 
-    stats_name = REAL_STATS_NAME[args.dataset]
-    real_dir = REAL_DIR[args.dataset]
+    stats_name = DATASETS[args.dataset].real_stats_name
+    real_dir = DATASETS[args.dataset].real_dir
 
     if fid.test_stats_exists(stats_name, mode="clean"):
         print(f"'{stats_name}' stats already cached, nothing to do.")

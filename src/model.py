@@ -193,16 +193,16 @@ class UNet(eqx.Module):
             in_channels, ch, kernel_size=3, padding=1, key=keys[1]
         )
 
-        # encoder (28x28, 64 channels)
+        # encoder (full res HxW, 64 channels)
         self.res1 = ResBlock(hidden_channels, ch, key=keys[2])
         self.res2 = ResBlock(hidden_channels, ch, key=keys[3])
 
-        # downsample 28->14, 64->128
+        # downsample H->H/2 (e.g. 28->14 or 64->32), 64->128
         self.down_conv = eqx.nn.Conv2d(
             ch, ch2, kernel_size=3, stride=2, padding=1, key=keys[4]
         )
 
-        # bottleneck (14x14, 128 channels)
+        # bottleneck (H/2 x W/2, 128 channels)
         self.res3 = ResBlock(hidden_channels, ch2, key=keys[5])
         self.res4 = ResBlock(hidden_channels, ch2, key=keys[6])
 
@@ -214,7 +214,7 @@ class UNet(eqx.Module):
             ch * 2, ch, kernel_size=3, padding=1, key=keys[8]
         )
 
-        # decoder (28x28, 64 channels)
+        # decoder (full res HxW, 64 channels)
         self.res5 = ResBlock(hidden_channels, ch, key=keys[9])
         self.res6 = ResBlock(hidden_channels, ch, key=keys[10])
 
@@ -222,10 +222,10 @@ class UNet(eqx.Module):
 
     def __call__(
         self,
-        x: Float[Array, "in_channels 28 28"],
+        x: Float[Array, "in_channels h w"],
         t: Float[Array, ""],
         y: Optional[Int[Array, ""]] = None,
-    ) -> Float[Array, "1 28 28"]:
+    ) -> Float[Array, "1 h w"]:
         time_embedding = self.time_emb(t)
         if self.label_emb is not None:
             assert y is not None

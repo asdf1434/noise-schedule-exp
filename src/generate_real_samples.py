@@ -6,12 +6,8 @@ import argparse
 
 import numpy as np
 
-from src.utils import get_dataloaders, save_images
-
-REAL_DIR = {
-    "mnist": "data/real",
-    "eurosat": "data/real_eurosat",
-}
+from src.datasets import DATASETS, get_dataloaders
+from src.utils import save_images
 
 
 def main():
@@ -20,7 +16,7 @@ def main():
         "--dataset",
         type=str,
         default="mnist",
-        choices=["mnist", "eurosat"],
+        choices=list(DATASETS),
     )
     parser.add_argument(
         "--num_samples",
@@ -31,7 +27,7 @@ def main():
     args = parser.parse_args()
 
     batch_size = 128
-    real_dir = REAL_DIR[args.dataset]
+    real_dir = DATASETS[args.dataset].real_dir
 
     print(f"Loading {args.dataset} dataset")
     dataloader = get_dataloaders(args.dataset, batch_size=batch_size)

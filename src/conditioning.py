@@ -22,8 +22,8 @@ CONDITIONING = {
 
 
 def make_lowres_channel(
-    clean: Float[Array, "b 1 28 28"], factor: int = 4
-) -> Float[Array, "b 1 28 28"]:
+    clean: Float[Array, "b 1 h w"], factor: int = 4
+) -> Float[Array, "b 1 h w"]:
     """
     downsapmle by factor on each dim, and then upscale using nearest neighbor
     u end up with a block version of the image
@@ -49,8 +49,8 @@ def inpaint_mask(height: int = 28, width: int = 28) -> Bool[Array, "1 height wid
 
 
 def make_inpaint_channels(
-    clean: Float[Array, "b 1 28 28"],
-) -> Float[Array, "b 2 28 28"]:
+    clean: Float[Array, "b 1 h w"],
+) -> Float[Array, "b 2 h w"]:
     """
     builds 2 extra conditioning channels for in-painting
     this includes the mask, and the actual real values
@@ -63,11 +63,11 @@ def make_inpaint_channels(
 
 
 def inject_known_region(
-    z: Float[Array, "b 1 28 28"],
-    clean: Float[Array, "b 1 28 28"],
-    noise: Float[Array, "b 1 28 28"],
+    z: Float[Array, "b 1 h w"],
+    clean: Float[Array, "b 1 h w"],
+    noise: Float[Array, "b 1 h w"],
     t: Float[Array, "b 1 1 1"],
-) -> Float[Array, "b 1 28 28"]:
+) -> Float[Array, "b 1 h w"]:
     """
     this overwrites the known half of z to be the true values
     this is needed because every step you re-write the real values into the generation
@@ -81,8 +81,8 @@ def inject_known_region(
 
 
 def build_cond_channels(
-    name: str, clean: Float[Array, "b 1 28 28"]
-) -> Optional[Float[Array, "b c 28 28"]]:
+    name: str, clean: Float[Array, "b 1 h w"]
+) -> Optional[Float[Array, "b c h w"]]:
     """
     pick the right option
     """
@@ -95,11 +95,11 @@ def build_cond_channels(
 
 def inject_known(
     name: str,
-    z: Float[Array, "b 1 28 28"],
-    clean: Float[Array, "b 1 28 28"],
-    noise: Float[Array, "b 1 28 28"],
+    z: Float[Array, "b 1 h w"],
+    clean: Float[Array, "b 1 h w"],
+    noise: Float[Array, "b 1 h w"],
     t: Float[Array, "b 1 1 1"],
-) -> Float[Array, "b 1 28 28"]:
+) -> Float[Array, "b 1 h w"]:
     if name == "inpaint":
         return inject_known_region(z, clean, noise, t)
     return z

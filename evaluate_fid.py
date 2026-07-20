@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from cleanfid import fid
 
+from src.datasets import DATASETS
 from src.naming import parse_exp_name
 
 # FID eval takes forever on cpu
@@ -18,14 +19,6 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 16
 BATCH_SIZE = 128
 
-REAL_STATS_NAME = {
-    "mnist": "mnist_real",
-    "eurosat": "eurosat_real",
-}
-REAL_DIR = {
-    "mnist": "data/real",
-    "eurosat": "data/real_eurosat",
-}
 EVAL_RUNS_DIR = "eval_runs"
 SHARD_DIR = "results/fid_shards"
 
@@ -67,8 +60,8 @@ def run_evaluation(
             SHARD_DIR, f"master_fid_results_shard{shard}_{dataset}.json"
         )
 
-    real_dir = REAL_DIR[dataset]
-    real_stats_name = REAL_STATS_NAME[dataset]
+    real_dir = DATASETS[dataset].real_dir
+    real_stats_name = DATASETS[dataset].real_stats_name
 
     if not os.path.exists(real_dir):
         raise FileNotFoundError(
@@ -196,7 +189,7 @@ def main():
         "--dataset",
         type=str,
         default="mnist",
-        choices=["mnist", "eurosat"],
+        choices=list(DATASETS),
         help="which dataset's eval_runs/ experiments to score (run once per dataset)",
     )
     args = parser.parse_args()
