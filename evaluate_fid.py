@@ -11,10 +11,9 @@ import numpy as np
 import torch
 from cleanfid import fid
 
-# FID evaluation is the pipeline bottleneck, so this requires a GPU by
-# default (see scripts/slurm/run_exp1_eval_array.sh's --gres=gpu:1) and dies
-# immediately if one isn't visible, rather than silently crawling on CPU for
-# hours -- pass --allow_cpu to opt into the slow path for local testing.
+from src.naming import parse_exp_name
+
+# FID eval takes forever on cpu
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 16
 BATCH_SIZE = 128
@@ -37,11 +36,16 @@ def _epoch_sort_key(schedule_dir: str) -> int:
 
 
 def _belongs_to_dataset(experiment_name: str, dataset: str) -> bool:
-    # non-mnist datasets prefix their experiment names (see train.py), e.g.
-    # eurosat_uniform_seed42; mnist experiments carry no dataset prefix.
-    if dataset == "mnist":
-        return not experiment_name.startswith("eurosat_")
-    return experiment_name.startswith(f"{dataset}_")
+    try:
+        return parse_exp_name(experiment_name)["dataset"] == dataset
+    except ValueError:
+        # Pre-rename experiments (exp1/2/3) predate the ds-/cond-/dist-/seed-
+        # naming scheme and were never migrated; fall back to the old
+        # convention where non-mnist datasets prefixed the bare name, e.g.
+        # eurosat_uniform_seed42, and mnist experiments had no prefix.
+        if dataset == "mnist":
+            return not experiment_name.startswith("eurosat_")
+        return experiment_name.startswith(f"{dataset}_")
 
 
 def run_evaluation(
@@ -49,23 +53,12 @@ def run_evaluation(
 ):
     if DEVICE.type == "cpu" and not allow_cpu:
         raise RuntimeError(
-            "No GPU visible (torch.cuda.is_available() is False) and --allow_cpu "
-            "wasn't passed. Refusing to silently fall back to a CPU run that would "
-            "take hours -- check --gres=gpu:1 was granted and the node's driver is "
-            "compatible with this venv's torch build, or pass --allow_cpu to run on "
-            "CPU anyway (e.g. for local testing)."
+            "No GPU visible (torch.cuda.is_available() is False) and --allow_cpu wasn't passed. Refusing to silently fall back onto a CPU run."
         )
 
-    # When run under the Slurm array (run_exp1_eval_array.sh /
-    # run_eurosat_eval_array.sh), each shard writes its own file so N
-    # concurrent array tasks never write to the same master file at once.
-    # merge_fid_shards.py combines them afterward. The dataset is folded into
-    # the shard filename so a mnist eval array and a eurosat eval array can
-    # run concurrently without clobbering each other's shard files -- both
-    # still merge into the one shared master_fid_results.json since they key
-    # off disjoint (prefixed vs. unprefixed) experiment names.
-    # With num_shards=1 (plain `python evaluate_fid.py`), this is just
-    # master_fid_results.json directly.
+    # each shard writes to its own file so tasks never try to write to the master file at the same time
+    # merge_fid_shards.py combines these files afterward.
+
     if num_shards == 1:
         metrics_file = "results/master_fid_results.json"
     else:
@@ -78,26 +71,23 @@ def run_evaluation(
     real_stats_name = REAL_STATS_NAME[dataset]
 
     if not os.path.exists(real_dir):
-        raise FileNotFoundError(f"Could not find your real images directory at: {real_dir}")
+        raise FileNotFoundError(
+            f"Could not find your real images directory at: {real_dir}"
+        )
 
     if not fid.test_stats_exists(real_stats_name, mode="clean"):
         raise RuntimeError(
             f"Real-image FID stats '{real_stats_name}' aren't cached yet. Run "
             f"cache_real_stats.py --dataset {dataset} once first (see run_exp1_eval_stats.sh)."
         )
-
-    # Built once per process (not per folder) -- rebuilding the InceptionV3
-    # feature extractor and re-downloading/re-parsing reference stats per
-    # folder would dominate GPU wall-clock for these small (~1000-image) sets.
+    # this gets built once per process on the real data
     feat_model = fid.build_feature_extractor("clean", DEVICE)
     ref_mu, ref_sigma = fid.get_reference_statistics(
         real_stats_name, res="na", mode="clean", split="custom"
     )
 
     print("==================================================")
-    # Find all leaf dirs that look like: eval_runs/experiment_name/epoch_X/schedule_name
-    # (NOT epoch_X itself -- clean-fid globs images recursively, so scoring at the
-    # epoch level would silently merge all sampling schedules into one FID number.)
+    # find all leaf directories that look like eval_runs/experiment_name/epoch_X/schedule_name
     schedule_dirs = glob.glob(os.path.join(EVAL_RUNS_DIR, "*", "epoch_*", "*"))
     schedule_dirs = [d for d in schedule_dirs if os.path.isdir(d)]
     schedule_dirs = [
@@ -147,7 +137,9 @@ def run_evaluation(
             print(f"  -> [SKIP] {schedule_dir} is empty")
             continue
 
-        print(f"Calculating FID for {experiment_name} / {schedule_name} ({epoch_str})...")
+        print(
+            f"Calculating FID for {experiment_name} / {schedule_name} ({epoch_str})..."
+        )
 
         try:
             # scored against the cached real-image stats and the resident
@@ -184,15 +176,21 @@ def run_evaluation(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--shard", type=int, default=0, help="This task's index (0-based) among num_shards"
+        "--shard",
+        type=int,
+        default=0,
+        help="This task's index (0-based) among num_shards",
     )
     parser.add_argument(
-        "--num_shards", type=int, default=1, help="Total number of parallel shards/tasks"
+        "--num_shards",
+        type=int,
+        default=1,
+        help="Total number of parallel shards/tasks",
     )
     parser.add_argument(
         "--allow_cpu",
         action="store_true",
-        help="Allow running on CPU instead of dying when no GPU is visible (slow; for local testing)",
+        help="allow running on cpu even if no gpu?",
     )
     parser.add_argument(
         "--dataset",
