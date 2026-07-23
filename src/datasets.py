@@ -214,10 +214,29 @@ def get_cifar10_dataloaders(batch_size: int, with_labels: bool = False):
     """Load CIFAR-10 (native 32x32 RGB) collapsed to grayscale, matching the
     treatment EuroSAT gets -- keeps the model/conditioning/FID pipeline's
     single-channel assumption intact instead of adding RGB support.
+
+    Pulled from HuggingFace Hub (`uoft-cs/cifar10`, parquet, CDN-backed)
+    instead of tfds's `cifar10` builder -- tfds's builder downloads the
+    binary-format tarball straight from cs.toronto.edu, a plain university
+    server with no CDN that was measured at ~1.7MB/min (~100min for the full
+    ~163MB file); the HF mirror downloaded the same data in seconds.
     """
-    return load_tfds_dataset(
-        "cifar10", target_size=32, grayscale=True, total=50000, with_labels=with_labels
+    from datasets import load_dataset
+
+    ds = load_dataset(
+        "uoft-cs/cifar10", split="train", cache_dir=os.path.join(_DATA_DIR, "hf_cache")
     )
+    images, labels = [], []
+    for ex in tqdm.tqdm(ds, total=len(ds), unit="img"):
+        images.append(np.array(ex["img"], dtype=np.float32))
+        labels.append(ex["label"])
+
+    images = jnp.asarray(np.stack(images))  # (N, 32, 32, 3)
+    images = _grayscale(images)
+    images = _finalize(np.asarray(images))
+    if not with_labels:
+        return images
+    return images, jnp.array(np.stack(labels), dtype=jnp.int32)
 
 
 DATASETS = {

@@ -12,6 +12,7 @@ pillow
 importlib_resources
 tensorflow-cpu
 tensorflow-datasets
+datasets
 matplotlib
 beartype
 requests

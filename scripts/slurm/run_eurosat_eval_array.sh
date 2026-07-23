@@ -20,7 +20,7 @@
 # improbablex002 segfaults inside torch/clean-fid's CUDA init (see
 # run_eurosat.sh's header for the other known-bad nodes, mostly
 # rtx2080ti/titanrtx-class and not reachable by this partition list anyway).
-#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,isola-ada6000-1
+#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=8G

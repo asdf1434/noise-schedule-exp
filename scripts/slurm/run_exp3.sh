@@ -42,7 +42,7 @@
 # failures each) don't need individual --exclude entries: they're all
 # v100/titanrtx nodes, already unreachable now that vision-shared-v100 and
 # vision-shared-titanrtx were dropped from --partition above.
-#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,isola-ada6000-1,gpu19-1.drl,gpu20-3.drl
+#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2
 # Auto-resubmit a task if SLURM kills it (preemption, node failure) instead
 # of requiring a manual requeue_failed.sh pass. Doesn't distinguish
 # contention/preemption from a genuine code bug -- if train.py itself is

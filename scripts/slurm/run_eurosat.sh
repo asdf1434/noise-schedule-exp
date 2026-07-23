@@ -34,7 +34,7 @@
 # fine. improbablex002: segfaults inside torch/clean-fid's CUDA init
 # (unrelated subsystem to jax, but still bad hardware/drivers -- excluded
 # defensively in case future eval-array jobs land there too).
-#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl
+#SBATCH --exclude=isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
