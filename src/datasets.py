@@ -199,6 +199,27 @@ def _eurosat64_loader(batch_size: int, with_labels: bool = False):
     return get_eurosat_dataloaders(batch_size, with_labels, target_size=64)
 
 
+def get_fashion_mnist_dataloaders(batch_size: int, with_labels: bool = False):
+    """Load Fashion-MNIST (native 28x28 grayscale) in the model's NCHW [-1,1] format."""
+    return load_tfds_dataset(
+        "fashion_mnist",
+        target_size=28,
+        grayscale=False,
+        total=60000,
+        with_labels=with_labels,
+    )
+
+
+def get_cifar10_dataloaders(batch_size: int, with_labels: bool = False):
+    """Load CIFAR-10 (native 32x32 RGB) collapsed to grayscale, matching the
+    treatment EuroSAT gets -- keeps the model/conditioning/FID pipeline's
+    single-channel assumption intact instead of adding RGB support.
+    """
+    return load_tfds_dataset(
+        "cifar10", target_size=32, grayscale=True, total=50000, with_labels=with_labels
+    )
+
+
 DATASETS = {
     "mnist": DatasetSpec(
         name="mnist",
@@ -208,6 +229,24 @@ DATASETS = {
         real_dir="data/real",
         real_stats_name="mnist_real",
         load=get_mnist_dataloaders,
+    ),
+    "fashion_mnist": DatasetSpec(
+        name="fashion_mnist",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_fashion_mnist",
+        real_stats_name="fashion_mnist_real",
+        load=get_fashion_mnist_dataloaders,
+    ),
+    "cifar10": DatasetSpec(
+        name="cifar10",
+        image_size=32,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_cifar10",
+        real_stats_name="cifar10_real",
+        load=get_cifar10_dataloaders,
     ),
     "eurosat": DatasetSpec(
         name="eurosat",
