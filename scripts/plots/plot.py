@@ -60,6 +60,7 @@ def plot_experiment(master_data: dict, experiment: str, save_path: str):
     plt.ylabel("FID Score (Lower is Better)", fontsize=13)
     plt.legend(title="Sampling Schedule", fontsize=11, frameon=True)
     plt.grid(True, linestyle="--", alpha=0.7)
+    plt.xlim(left=0)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
@@ -99,6 +100,7 @@ def plot_schedule_comparison(master_data: dict, schedule: str, save_path: str):
     plt.ylabel("FID Score (Lower is Better)", fontsize=13)
     plt.legend(title="Training Distribution", fontsize=11, frameon=True)
     plt.grid(True, linestyle="--", alpha=0.7)
+    plt.xlim(left=0)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)

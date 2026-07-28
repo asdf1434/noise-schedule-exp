@@ -1,5 +1,3 @@
-# WRITTEN BY CLAUDE
-
 """Copies a random subset of generated sample images out of eval_runs/ into a
 small, git-addable folder -- so you can pull just a handful of images to your
 own machine to eyeball, instead of the whole (huge, gitignored) eval_runs/
@@ -44,7 +42,9 @@ def pick_seed_dir(dataset: str, dist: str) -> str | None:
     """Among eval_runs/ds-<dataset>__cond-*__dist-<dist>__seed-*, return the
     one with the lowest seed number that actually has epoch_* subdirs."""
     candidates = []
-    for path in glob.glob(os.path.join("eval_runs", f"ds-{dataset}__cond-*__dist-{dist}__seed-*")):
+    for path in glob.glob(
+        os.path.join("eval_runs", f"ds-{dataset}__cond-*__dist-{dist}__seed-*")
+    ):
         name = os.path.basename(path)
         try:
             seed = parse_exp_name(name)["seed"]
@@ -78,14 +78,49 @@ def pick_epochs(exp_dir: str, n_epochs: int) -> list[str]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--dataset", default="eurosat64", help="Dataset name as it appears in exp_name (ds-<dataset>__...)")
-    parser.add_argument("--dists", nargs="+", default=DISTS, help="Train-dist tokens to sample (dist-<token> in exp_name)")
-    parser.add_argument("--schedules", nargs="+", default=SCHEDULES, help="Sampling schedule subfolder names")
-    parser.add_argument("--n_epochs", type=int, default=10, help="Number of epoch checkpoints to sample per (dist, schedule)")
-    parser.add_argument("--n_per_epoch", type=int, default=5, help="Number of random images to sample per (dist, schedule, epoch)")
-    parser.add_argument("--dest", default=None, help="Output dir (default: eval_runs/export_imgs/<dataset>)")
-    parser.add_argument("--seed", type=int, default=0, help="Random seed for image sampling (reproducible picks)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--dataset",
+        default="eurosat64",
+        help="Dataset name as it appears in exp_name (ds-<dataset>__...)",
+    )
+    parser.add_argument(
+        "--dists",
+        nargs="+",
+        default=DISTS,
+        help="Train-dist tokens to sample (dist-<token> in exp_name)",
+    )
+    parser.add_argument(
+        "--schedules",
+        nargs="+",
+        default=SCHEDULES,
+        help="Sampling schedule subfolder names",
+    )
+    parser.add_argument(
+        "--n_epochs",
+        type=int,
+        default=10,
+        help="Number of epoch checkpoints to sample per (dist, schedule)",
+    )
+    parser.add_argument(
+        "--n_per_epoch",
+        type=int,
+        default=5,
+        help="Number of random images to sample per (dist, schedule, epoch)",
+    )
+    parser.add_argument(
+        "--dest",
+        default=None,
+        help="Output dir (default: eval_runs/export_imgs/<dataset>)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for image sampling (reproducible picks)",
+    )
     args = parser.parse_args()
 
     dest_root = args.dest or os.path.join("eval_runs", "export_imgs", args.dataset)
@@ -95,7 +130,9 @@ def main():
     for dist in args.dists:
         exp_dir = pick_seed_dir(args.dataset, dist)
         if exp_dir is None:
-            print(f"[SKIP] no eval_runs dir found for dataset={args.dataset} dist={dist}")
+            print(
+                f"[SKIP] no eval_runs dir found for dataset={args.dataset} dist={dist}"
+            )
             continue
         seed_used = parse_exp_name(os.path.basename(exp_dir))["seed"]
         epoch_dirs = pick_epochs(exp_dir, args.n_epochs)
@@ -103,7 +140,9 @@ def main():
             print(f"[SKIP] {exp_dir} has no epoch_* dirs")
             continue
 
-        print(f"{dist}: using seed {seed_used}, {len(epoch_dirs)} epochs -> {[os.path.basename(d) for d in epoch_dirs]}")
+        print(
+            f"{dist}: using seed {seed_used}, {len(epoch_dirs)} epochs -> {[os.path.basename(d) for d in epoch_dirs]}"
+        )
 
         for epoch_dir in epoch_dirs:
             epoch_name = os.path.basename(epoch_dir)

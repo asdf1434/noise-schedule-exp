@@ -1,5 +1,3 @@
-# written by CLAUDE
-
 import argparse
 import glob
 import json

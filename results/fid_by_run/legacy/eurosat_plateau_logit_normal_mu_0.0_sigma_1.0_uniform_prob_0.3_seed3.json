@@ -1,0 +1,14 @@
+{
+    "logit_normal": {
+        "epoch_10": 132.0496
+    },
+    "uniform": {
+        "epoch_10": 140.0834
+    },
+    "shifted_coarse": {
+        "epoch_10": 126.0972
+    },
+    "shifted_fine": {
+        "epoch_10": 142.9106
+    }
+}

@@ -6831,24 +6831,6 @@
             "epoch_90": 82.2082
         }
     },
-    "ds-eurosat64__cond-none__dist-uniform__seed-42": {
-        "logit_normal": {
-            "epoch_1": 293.5156,
-            "epoch_2": 280.4968
-        },
-        "uniform": {
-            "epoch_1": 296.5992,
-            "epoch_2": 266.4845
-        },
-        "shifted_fine": {
-            "epoch_1": 296.6194,
-            "epoch_2": 267.1965
-        },
-        "shifted_coarse": {
-            "epoch_1": 280.1949,
-            "epoch_2": 284.1415
-        }
-    },
     "ds-eurosat64__cond-none__dist-plateau_logit_normal_mu_0.0_sigma_1.0_uniform_prob_0.3__seed-4": {
         "logit_normal": {
             "epoch_10": 215.2801,

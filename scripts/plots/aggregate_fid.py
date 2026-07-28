@@ -127,6 +127,7 @@ def plot_experiment(aggregated: dict, experiment: str, save_path: str):
     plt.ylabel("FID Score (Lower is Better)", fontsize=13)
     plt.legend(title="Sampling Schedule", fontsize=11, frameon=True)
     plt.grid(True, linestyle="--", alpha=0.7)
+    plt.xlim(left=0)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
@@ -172,6 +173,7 @@ def plot_schedule_comparison(aggregated: dict, schedule: str, save_path: str):
     plt.ylabel("FID Score (Lower is Better)", fontsize=13)
     plt.legend(title="Training Distribution", fontsize=11, frameon=True)
     plt.grid(True, linestyle="--", alpha=0.7)
+    plt.xlim(left=0)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
@@ -231,6 +233,7 @@ def plot_all_combined(aggregated: dict, save_path: str):
     plt.xlabel("Training Epoch", fontsize=13)
     plt.ylabel("FID Score (Lower is Better)", fontsize=13)
     plt.grid(True, linestyle="--", alpha=0.7)
+    plt.xlim(left=0)
 
     color_handles = [
         Line2D([0], [0], color=exp_colors[exp], linewidth=2, label=exp) for exp in experiments

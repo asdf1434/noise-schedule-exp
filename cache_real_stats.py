@@ -1,5 +1,3 @@
-# WRITTEN BY CLAUDE
-
 import argparse
 
 import torch
