@@ -1,84 +1,27 @@
 """Generic error/progress scan over logs/slurm/*.out, for any job (training
 array, eval array, merge, etc) -- not tied to one specific experiment.
 
-For each matched log file, reports:
-  - whether it contains an error (Error/Traceback/CANCELLED/error:)
-  - whether it reached a "complete" marker printed by the corresponding
-    .sh script (e.g. "Array task N ... complete", "Shard N/M complete")
-  - which node it ran on (from the cpu-bind line), so repeat failures on
-    the same node are easy to spot
+A task is OK only if it printed its script's completion marker; everything else
+is a failure (see log_status.py for why it's an allowlist of success rather
+than of errors). Tasks that never started write no log at all, so pass
+--expect N to have their array indices reported as MISSING.
+
+For each matched log file, reports status, the node it ran on (so repeat
+failures on one node are easy to spot), and the line explaining the failure.
+
+Exits 1 if anything failed or is missing, so it can gate a pipeline stage.
 
 Usage:
-  python check_slurm_logs.py                          # scan everything
-  python check_slurm_logs.py "*exp2_train_dists*"      # just exp2 training
-  python check_slurm_logs.py "*eval_array*"            # just the eval array
+  python check_slurm_logs.py                            # scan everything
+  python check_slurm_logs.py "*exp2_train_dists*"        # just exp2 training
+  python check_slurm_logs.py "*1216394*" --expect 120    # flag tasks with no log
 """
 
 import argparse
-import glob
-import os
-import re
-from collections import Counter, defaultdict
+import sys
+from collections import Counter
 
-LOG_DIR = "logs/slurm"
-
-ERROR_MARKERS = ("Error", "Traceback", "CANCELLED", "error:")
-COMPLETE_MARKERS = ("complete.", "complete!")
-
-NODE_RE = re.compile(r"cpu-bind=MASK - ([\w.\-]+),")
-TASK_ID_RE = re.compile(r"_(\d+)\.out$")
-
-
-def scan(pattern: str):
-    paths = sorted(glob.glob(os.path.join(LOG_DIR, pattern)))
-    if not paths:
-        print(f"No logs found matching {os.path.join(LOG_DIR, pattern)}")
-        return
-
-    errored = []
-    completed = []
-    incomplete = []
-    node_of = {}
-    error_node_counts = Counter()
-
-    for path in paths:
-        try:
-            with open(path, errors="ignore") as f:
-                text = f.read()
-        except OSError:
-            continue
-
-        node_match = NODE_RE.search(text)
-        node = node_match.group(1) if node_match else "?"
-        node_of[path] = node
-
-        has_error = any(marker in text for marker in ERROR_MARKERS)
-        has_complete = any(marker in text for marker in COMPLETE_MARKERS)
-
-        if has_error:
-            errored.append(path)
-            error_node_counts[node] += 1
-        elif has_complete:
-            completed.append(path)
-        else:
-            incomplete.append(path)  # still running, or died with no marker at all
-
-    print(f"Scanned {len(paths)} log(s) matching '{pattern}'\n")
-
-    print(f"{len(completed)} completed cleanly")
-    print(f"{len(incomplete)} still running / no completion marker yet")
-    print(f"{len(errored)} contain an error\n")
-
-    if errored:
-        print("Failing tasks (path -> node):")
-        for path in errored:
-            task_id = TASK_ID_RE.search(path)
-            task_id = task_id.group(1) if task_id else "?"
-            print(f"  task {task_id:>4}  {node_of[path]:<20}  {path}")
-
-        print("\nFailures by node (repeat offenders worth excluding via --exclude):")
-        for node, count in error_node_counts.most_common():
-            print(f"  {node:<20} {count} failure(s)")
+from log_status import FAILED, OK, RUNNING, scan
 
 
 def main():
@@ -89,9 +32,60 @@ def main():
         default="*.out",
         help="glob pattern (relative to logs/slurm/) to scan, e.g. '*eval_array*'",
     )
+    parser.add_argument(
+        "--expect",
+        type=int,
+        help="array size (e.g. 120); reports indices in 0..N-1 that produced no log",
+    )
+    parser.add_argument(
+        "--running_window",
+        type=float,
+        default=30.0,
+        help="a marker-less log touched within this many minutes counts as running",
+    )
     args = parser.parse_args()
-    scan(args.pattern)
+
+    results, missing = scan(args.pattern, args.expect, args.running_window)
+
+    if not results and not missing:
+        print(f"No logs found matching logs/slurm/{args.pattern}")
+        return 0
+
+    buckets = Counter(status for status, _, _ in results.values())
+    print(f"Scanned {len(results)} log(s) matching '{args.pattern}'\n")
+    print(f"{buckets[OK]} completed cleanly")
+    print(f"{buckets[RUNNING]} still running")
+    print(f"{buckets[FAILED]} FAILED")
+    if args.expect is not None:
+        print(f"{len(missing)} MISSING (never wrote a log)")
+    print()
+
+    failed = sorted(
+        (k for k, (s, _, _) in results.items() if s == FAILED),
+        key=lambda k: (isinstance(k, str), k),
+    )
+    if failed:
+        print("Failing tasks (task -> node -> why):")
+        for key in failed:
+            _, node, reason = results[key]
+            print(f"  task {str(key):>4}  {node:<20}  {reason}")
+
+        node_counts = Counter(results[k][1] for k in failed)
+        print("\nFailures by node (repeat offenders worth excluding via --exclude):")
+        for node, count in node_counts.most_common():
+            print(f"  {node:<20} {count} failure(s)")
+
+    if missing:
+        print(f"\nMISSING -- no log at all, so these never started ({len(missing)}):")
+        print(f"  --array={','.join(str(i) for i in missing)}")
+
+    if failed or missing:
+        print("\nRequeue everything above with:")
+        print(f'  scripts/monitor/requeue_failed.sh "{args.pattern}" <script.sh>'
+              + (f" {args.expect}" if args.expect is not None else ""))
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
