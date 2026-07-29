@@ -15,3 +15,4 @@ notes.md
 eval_runs/
 results/fid_shards/
 .DS_Store
+results/missing_fid_dirs_*.txt

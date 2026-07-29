@@ -55,7 +55,12 @@ python scripts/monitor/seed_fid_shards.py --dataset "$DATASET" --num_shards "$NU
 EVAL_JOBID=$(sbatch --parsable "scripts/slurm/$EVAL_ARRAY")
 echo "1/2 FID eval array: job $EVAL_JOBID  ($EVAL_ARRAY)"
 
-MERGE_JOBID=$(sbatch --parsable --dependency=afterok:"$EVAL_JOBID" "scripts/slurm/$EVAL_MERGE")
+# afterany, not afterok: the merge is idempotent and every shard file was seeded
+# from master above, so merging after a partial array can only add scores, never
+# lose them. With afterok a single preempted task out of 64 (lab-free QOS is
+# preemptible) leaves the merge stuck on DependencyNeverSatisfied and master
+# un-updated, which then has to be untangled by hand.
+MERGE_JOBID=$(sbatch --parsable --dependency=afterany:"$EVAL_JOBID" "scripts/slurm/$EVAL_MERGE")
 echo "2/2 merge:          job $MERGE_JOBID  (after $EVAL_JOBID, $EVAL_MERGE)"
 
 echo ""
