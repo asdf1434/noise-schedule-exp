@@ -60,6 +60,11 @@ def main():
         help="a schedule folder with fewer files than this counts as not exported",
     )
     parser.add_argument("--list_unscored", help="write UNSCORED folder paths here")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 if any cell is unscored or missing, so a pipeline stage can gate on it",
+    )
     args = parser.parse_args()
 
     span, step = args.epochs.split(":")
@@ -125,6 +130,13 @@ def main():
                 f.write("\n".join(sorted(unscored)) + "\n")
             print(f"  folder list written to {args.list_unscored}")
 
+    incomplete = len(unscored) + len(no_samples) + len(no_run)
+    if not incomplete:
+        print("\nComplete: every cell in the grid has a FID score.")
+    if args.strict and incomplete:
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
