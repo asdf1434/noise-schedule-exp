@@ -16,7 +16,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=01:30:00
+#SBATCH --time=03:00:00
 #SBATCH --array=0-9
 #SBATCH --output=logs/slurm/slurm_exp1_pilot_%A_%a.out
 

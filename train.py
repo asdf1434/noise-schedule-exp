@@ -92,13 +92,28 @@ def export_evaluation_images(
     """
     print(f"\nExporting eval images for epoch {epoch}")
 
+    # shift < 1 puts more steps at high noise, shift > 1 at low noise, shift == 1
+    # is the same as uniform. Only 0.3 and 3.0 were ever evaluated, which gives
+    # two points on what is really a continuous curve -- the extra values below
+    # fill it in so the *best* shift per dataset is visible, not just the sign of
+    # the difference. "shifted_coarse"/"shifted_fine" keep their original names
+    # and shifts so existing results and analysis code stay valid.
+    shifts = {
+        "shifted_s0.15": 0.15,
+        "shifted_coarse": 0.3,
+        "shifted_s0.5": 0.5,
+        "shifted_s0.7": 0.7,
+        "shifted_s1.5": 1.5,
+        "shifted_fine": 3.0,
+        "shifted_s5.0": 5.0,
+    }
     schedules_to_test = {
         "uniform": get_uniform_steps(num_steps=num_steps),
-        # more steps at high noise
-        "shifted_coarse": get_shifted_steps(num_steps=num_steps, shift=0.3),
-        # more steps at low noise
-        "shifted_fine": get_shifted_steps(num_steps=num_steps, shift=3.0),
         "logit_normal": get_logit_normal_cdf_steps(num_steps=num_steps),
+        **{
+            name: get_shifted_steps(num_steps=num_steps, shift=shift)
+            for name, shift in shifts.items()
+        },
     }
 
     eval_batch_size = min(200, eval_samples)
