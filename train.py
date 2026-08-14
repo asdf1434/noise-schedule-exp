@@ -52,6 +52,7 @@ def make_step(
     sample_t_fn: Callable,  # training schedule
     conditioning: str,
     labels: Optional[Int[Array, " batch"]] = None,
+    cond_params: tuple = (),
 ) -> tuple[eqx.Module, optax.OptState, Float[Array, ""]]:
     """
     single batch
@@ -66,7 +67,7 @@ def make_step(
     t = sample_t_fn(key_time, batch_size)
 
     loss_fn = lambda m: compute_loss_cond(
-        m, conditioning, clean_images, noise, t, labels
+        m, conditioning, clean_images, noise, t, labels, cond_params
     )
     loss, grads = eqx.filter_value_and_grad(loss_fn)(model)
 
@@ -86,6 +87,7 @@ def export_evaluation_images(
     num_steps: int,
     image_shape: tuple,
     eval_ref_images: Optional[Float[Array, "n 1 h w"]] = None,
+    cond_params: tuple = (),
 ):
     """
     generate and save samples for different inference schedules
@@ -153,6 +155,7 @@ def export_evaluation_images(
                     cond_images=cond_images,
                     labels=labels,
                     image_shape=image_shape,
+                    cond_params=cond_params,
                 )
             all_samples.append(np.array(batch_samples))
 
@@ -221,6 +224,15 @@ def main():
 
     parser.add_argument("--dist_params", type=str, default="{}", help="schedule params")
     parser.add_argument(
+        "--cond_params",
+        type=str,
+        default="{}",
+        help='JSON tuning how much help the conditioning gives, e.g. \'{"known_fraction": 0.75}\' '
+        'for inpaint or \'{"factor": 2}\' for lowres. Becomes part of the experiment name, so '
+        "different settings never overwrite each other. See CONDITIONING_PARAMS in "
+        "src/conditioning.py.",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -243,6 +255,11 @@ def main():
 
     dist_kwargs = json.loads(args.dist_params)
     model_kwargs = json.loads(args.model_params)
+    cond_kwargs = json.loads(args.cond_params)
+    # Passed into jitted code, so it has to be hashable -- and `factor` decides
+    # an array shape, so it can't be traced either. Sorted so the same settings
+    # always produce the same experiment name.
+    cond_items = tuple(sorted(cond_kwargs.items()))
 
     cond_spec = CONDITIONING[args.conditioning]
     ds_spec = DATASETS[args.dataset]
@@ -251,7 +268,12 @@ def main():
     image_shape = (ds_spec.channels, ds_spec.image_size, ds_spec.image_size)
 
     exp_name = make_exp_name(
-        args.dataset, args.conditioning, args.train_dist, dist_kwargs, args.seed
+        args.dataset,
+        args.conditioning,
+        args.train_dist,
+        dist_kwargs,
+        args.seed,
+        cond_params=cond_kwargs,
     )
 
     os.makedirs(os.path.join("logs", "metrics", exp_name), exist_ok=True)
@@ -353,6 +375,7 @@ def main():
                 train_dist_fn,
                 args.conditioning,
                 batch_labels,
+                cond_items,
             )
             epoch_loss += loss
 
@@ -375,6 +398,7 @@ def main():
                 args.num_steps,
                 image_shape,
                 eval_ref_images,
+                cond_items,
             )
 
             # save metrics and checkpoint

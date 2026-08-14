@@ -33,15 +33,17 @@ def compute_loss_cond(
     noise: Float[Array, "b 1 h w"],
     t: Float[Array, "b 1 1 1"],
     labels: Optional[Int[Array, " b"]] = None,
+    cond_params=(),
 ) -> Float[Array, ""]:
     """
     same x-pred loss as in compute_loss_x above
     concatenates conditioning variant's extra channels if they exist onto noisy image
     labels get passed through
     loss is over full image
+    cond_params tunes how much help the conditioning gives -- see CONDITIONING_PARAMS
     """
     z = t * clean_images + (1 - t) * noise
-    extra = build_cond_channels(conditioning, clean_images)
+    extra = build_cond_channels(conditioning, clean_images, cond_params)
     model_input = z if extra is None else jnp.concatenate([z, extra], axis=1)
 
     if labels is not None:

@@ -77,6 +77,7 @@ def sample_batch_cond(
     cond_images: Optional[Float[Array, "batch 1 h w"]] = None,
     labels: Optional[Int[Array, " batch"]] = None,
     image_shape: tuple = (1, 28, 28),
+    cond_params=(),
 ) -> Float[Array, "batch c h w"]:
     """
     same as sample_batch_x except it understands conditioning
@@ -99,7 +100,7 @@ def sample_batch_cond(
     z = jax.random.normal(key_noise, (batch_size,) + image_shape)
 
     extra = (
-        build_cond_channels(conditioning, cond_images)
+        build_cond_channels(conditioning, cond_images, cond_params)
         if cond_images is not None
         else None
     )
@@ -120,7 +121,7 @@ def sample_batch_cond(
 
         if conditioning == "inpaint":
             t_full = jnp.full((batch_size, 1, 1, 1), t)
-            z = inject_known(conditioning, z, cond_images, fixed_noise, t_full)
+            z = inject_known(conditioning, z, cond_images, fixed_noise, t_full, cond_params)
 
         model_input = z if extra is None else jnp.concatenate([z, extra], axis=1)
 
@@ -134,6 +135,6 @@ def sample_batch_cond(
 
     if conditioning == "inpaint":
         t_full = jnp.full((batch_size, 1, 1, 1), timesteps[-1])
-        z = inject_known(conditioning, z, cond_images, fixed_noise, t_full)
+        z = inject_known(conditioning, z, cond_images, fixed_noise, t_full, cond_params)
 
     return z
