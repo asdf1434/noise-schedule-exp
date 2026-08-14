@@ -9,7 +9,10 @@ CLUSTER_SETUP.md
 david.md
 .vscode/
 CLAUDE.md
-plots/
+# Leading slash matters: a bare "plots/" also matches scripts/plots/, which
+# silently kept the whole plotting suite out of the repo. This ignores only the
+# top-level output directory.
+/plots/
 *.md
 notes.md
 eval_runs/
