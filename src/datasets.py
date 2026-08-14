@@ -72,6 +72,7 @@ def load_tfds_dataset(
     grayscale: bool = False,
     total: Optional[int] = None,
     with_labels: bool = False,
+    pixel_transform: Optional[Callable] = None,
 ):
     """Generic loader for the common case: load a tfds image classification
     dataset, optionally grayscale it, resize to ``target_size`` x
@@ -80,6 +81,11 @@ def load_tfds_dataset(
     Datasets with quirks (custom download URLs, TLS chains, crops) get their
     own loader function instead -- see ``get_eurosat_dataloaders`` -- but the
     majority can be registered with just a partial over this.
+
+    ``pixel_transform`` is an optional callable applied to the whole ``(N, H, W, C)``
+    batch while it's still in ``[0, 255]``, just before the conversion to
+    ``[-1, 1]`` NCHW. It sees every image at once, so it can normalize against
+    dataset-wide statistics -- see ``_gamma_transform``.
     """
     ds = tfds.load(tfds_name, split="train", as_supervised=True, data_dir=_DATA_DIR)
     images, labels = [], []
@@ -96,6 +102,9 @@ def load_tfds_dataset(
         images = jax.image.resize(
             images, (n, target_size, target_size, images.shape[-1]), method="bilinear"
         )
+
+    if pixel_transform is not None:
+        images = pixel_transform(images)
 
     images = _finalize(np.asarray(images))
     if not with_labels:
@@ -210,6 +219,65 @@ def get_fashion_mnist_dataloaders(batch_size: int, with_labels: bool = False):
     )
 
 
+# Every gamma value leaves pure white at 255, so scaling by <= 1 can never push
+# a pixel out of range. 72.0 is just under the smallest spread any of the five
+# levels produces on its own (gamma=2.5 gives 72.32), which makes it the largest
+# common target reachable by scaling *down* only -- so all five levels come out
+# at an identical spread with zero clipping.
+_GAMMA_TARGET_STD = 72.0
+
+
+def _gamma_transform(gamma: float):
+    """Redistribute MNIST's tones without changing how much signal there is.
+
+    MNIST is roughly 80% black background and near-white strokes, with a thin
+    band of grey along the stroke edges. ``gamma > 1`` pushes that grey band
+    toward black so digits read as hard stencils; ``gamma < 1`` lifts it into
+    visible gradient so they read as soft and smudgy. Measured on the training
+    split, the fraction of mid-grey pixels runs 18.8% at gamma=0.5 down to 5.9%
+    at gamma=2.5, and the slope of the power spectrum moves -2.79 -> -2.29.
+    Only 0.5 / 1.0 / 2.5 are registered -- the two intermediate levels were
+    dropped to keep the sweep affordable, so this measures the direction and
+    sign of the effect but not whether it moves smoothly.
+
+    The rescale afterwards is the part that matters for correctness. Gamma on
+    its own changes the spread of pixel values (std 83.9 down to 72.3 across
+    this range), and since the diffusion noise is fixed unit-scale, that would
+    quietly change the signal-to-noise ratio at every timestep -- i.e. it would
+    move the noise schedule rather than the images, which is the one thing this
+    experiment must not do. Scaling every level to a common spread removes that.
+
+    Scaling is anchored at 0 rather than at the mean on purpose: re-centering
+    would drag the black background off zero, and since 80% of MNIST *is*
+    background, that clipped 80% of all pixels in testing.
+
+    Note gamma=1.0 is therefore not quite pixel-identical to plain MNIST -- it's
+    scaled by 0.916 like everything else -- so it won't reproduce the existing
+    MNIST FID exactly. That's the price of an exactly matched spread across
+    levels; it still serves as the control arm within this experiment.
+    """
+
+    def transform(images_nhwc):
+        y = (images_nhwc / 255.0) ** gamma * 255.0
+        return y * (_GAMMA_TARGET_STD / y.std())
+
+    return transform
+
+
+def _mnist_gamma_loader(gamma: float):
+    def load(batch_size: int, with_labels: bool = False):
+        return load_tfds_dataset(
+            "mnist",
+            target_size=28,
+            grayscale=False,
+            total=60000,
+            with_labels=with_labels,
+            pixel_transform=_gamma_transform(gamma),
+        )
+
+    return load
+
+
 def _fashion_mnist_resized_loader(target_size: int):
     """Fashion-MNIST rendered at a non-native size, for the image-size comparison.
 
@@ -280,6 +348,35 @@ DATASETS = {
         real_dir="data/real_fashion_mnist",
         real_stats_name="fashion_mnist_real",
         load=get_fashion_mnist_dataloaders,
+    ),
+    # The tone-curve comparison -- same digits, same size, same model, only the
+    # balance of hard black-and-white vs soft grey changes. See _gamma_transform.
+    "mnist_g050": DatasetSpec(
+        name="mnist_g050",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_mnist_g050",
+        real_stats_name="mnist_g050_real",
+        load=_mnist_gamma_loader(0.5),
+    ),
+    "mnist_g100": DatasetSpec(
+        name="mnist_g100",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_mnist_g100",
+        real_stats_name="mnist_g100_real",
+        load=_mnist_gamma_loader(1.0),
+    ),
+    "mnist_g250": DatasetSpec(
+        name="mnist_g250",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_mnist_g250",
+        real_stats_name="mnist_g250_real",
+        load=_mnist_gamma_loader(2.5),
     ),
     # The image-size comparison. r28 is byte-for-byte the same data as
     # "fashion_mnist" above and deliberately shares its real images and cached
