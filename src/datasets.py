@@ -210,6 +210,29 @@ def get_fashion_mnist_dataloaders(batch_size: int, with_labels: bool = False):
     )
 
 
+def _fashion_mnist_resized_loader(target_size: int):
+    """Fashion-MNIST rendered at a non-native size, for the image-size comparison.
+
+    Note the two directions are not symmetric, which is the point of running
+    both: 14 is a real downsample and throws away fine detail, while 56 is
+    interpolated up from the native 28 and adds pixels without adding any
+    detail. If the best step spacing shifts at 14 but not at 56, that points at
+    image content; if it shifts at 56 too, it's about pixel count and how much
+    of the image the network sees at once.
+    """
+
+    def load(batch_size: int, with_labels: bool = False):
+        return load_tfds_dataset(
+            "fashion_mnist",
+            target_size=target_size,
+            grayscale=False,
+            total=60000,
+            with_labels=with_labels,
+        )
+
+    return load
+
+
 def get_cifar10_dataloaders(batch_size: int, with_labels: bool = False):
     """Load CIFAR-10 (native 32x32 RGB) collapsed to grayscale, matching the
     treatment EuroSAT gets -- keeps the model/conditioning/FID pipeline's
@@ -257,6 +280,41 @@ DATASETS = {
         real_dir="data/real_fashion_mnist",
         real_stats_name="fashion_mnist_real",
         load=get_fashion_mnist_dataloaders,
+    ),
+    # The image-size comparison. r28 is byte-for-byte the same data as
+    # "fashion_mnist" above and deliberately shares its real images and cached
+    # FID stats -- it exists only so the three sizes get their own fresh
+    # experiment names. Reusing "fashion_mnist" would have written new samples
+    # into the existing sweep's eval_runs/ folders, and since evaluate_fid.py
+    # skips anything already in master, the 4 original spacings would have kept
+    # their scores from the *old* model while the 5 new ones were scored from
+    # the new one -- one row, two different models.
+    "fashion_mnist_r28": DatasetSpec(
+        name="fashion_mnist_r28",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_fashion_mnist",
+        real_stats_name="fashion_mnist_real",
+        load=get_fashion_mnist_dataloaders,
+    ),
+    "fashion_mnist_r14": DatasetSpec(
+        name="fashion_mnist_r14",
+        image_size=14,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_fashion_mnist_r14",
+        real_stats_name="fashion_mnist_r14_real",
+        load=_fashion_mnist_resized_loader(14),
+    ),
+    "fashion_mnist_r56": DatasetSpec(
+        name="fashion_mnist_r56",
+        image_size=56,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_fashion_mnist_r56",
+        real_stats_name="fashion_mnist_r56_real",
+        load=_fashion_mnist_resized_loader(56),
     ),
     "cifar10": DatasetSpec(
         name="cifar10",
