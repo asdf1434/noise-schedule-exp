@@ -1,0 +1,45 @@
+{
+  "slopes": {
+    "mnist": -2.6559882853870413,
+    "mnist_g050": -2.7852960008167766,
+    "mnist_g250": -2.2890543979518565
+  },
+  "fitted": {
+    "mnist / inpaint": [
+      -2.6559882853870413,
+      -57.305935841559354
+    ]
+  },
+  "fid_dynamic_range": {
+    "ds-mnist__cond-inpaint": {
+      "first": 21.67211666666667,
+      "last": 19.89936333333333,
+      "drop_pct": 8.179880906879612
+    },
+    "ds-fashion_mnist__cond-none": {
+      "first": 79.19614,
+      "last": 49.54058499999999,
+      "drop_pct": 37.44570758120283
+    },
+    "ds-fashion_mnist__cond-inpaint": {
+      "first": 34.28232,
+      "last": 24.740635,
+      "drop_pct": 27.83267001766508
+    },
+    "ds-cifar10__cond-none": {
+      "first": 111.47084166666666,
+      "last": 81.22195,
+      "drop_pct": 27.136147188266936
+    },
+    "ds-cifar10__cond-inpaint": {
+      "first": 57.224153333333334,
+      "last": 45.83093666666666,
+      "drop_pct": 19.909803820601173
+    },
+    "ds-eurosat64__cond-none": {
+      "first": 214.71129333333332,
+      "last": 166.91113965517243,
+      "drop_pct": 22.262524218487414
+    }
+  }
+}
