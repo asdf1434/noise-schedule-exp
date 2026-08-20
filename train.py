@@ -5,7 +5,7 @@ import math
 import os
 import sys
 import time
-from typing import Callable, Optional
+from typing import Optional
 
 import equinox as eqx
 import jax
@@ -20,6 +20,7 @@ from jaxtyping import Array, Float, Int, PRNGKeyArray, install_import_hook
 with install_import_hook("src", "beartype.beartype"):
     from src.conditioning import CONDITIONING
     from src.datasets import DATASETS
+    from src.infonoise import InfoNoiseSampler
     from src.loss import compute_loss_cond
     from src.model import UNet
     from src.naming import make_exp_name
@@ -48,33 +49,34 @@ def make_step(
     model: eqx.Module,
     opt_state: optax.OptState,
     clean_images: Float[Array, "batch 1 h w"],
-    key: PRNGKeyArray,
-    sample_t_fn: Callable,  # training schedule
+    key_noise: PRNGKeyArray,
+    t: Float[Array, "batch 1 1 1"],
     conditioning: str,
     labels: Optional[Int[Array, " batch"]] = None,
     cond_params: tuple = (),
-) -> tuple[eqx.Module, optax.OptState, Float[Array, ""]]:
+) -> tuple[eqx.Module, optax.OptState, Float[Array, ""], Float[Array, " batch"]]:
     """
     single batch
     compute gradients and update model
+
+    ``t`` is drawn by the caller rather than here: InfoNoise's training
+    distribution changes shape every refresh, so it can't be a jit-static
+    callable. The per-sample unweighted loss comes back out as aux because
+    that's the statistic InfoNoise's profile estimator consumes; it plays no
+    part in the gradient.
     """
 
-    key_noise, key_time = jax.random.split(key)
-    batch_size = clean_images.shape[0]
-
-    # generate noise and timesteps using sample_t_fn
     noise = jax.random.normal(key_noise, clean_images.shape)
-    t = sample_t_fn(key_time, batch_size)
 
     loss_fn = lambda m: compute_loss_cond(
         m, conditioning, clean_images, noise, t, labels, cond_params
     )
-    loss, grads = eqx.filter_value_and_grad(loss_fn)(model)
+    (loss, unweighted), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model)
 
     updates, new_opt_state = optim.update(grads, opt_state, model)
     new_model = eqx.apply_updates(model, updates)
 
-    return new_model, new_opt_state, loss
+    return new_model, new_opt_state, loss, unweighted
 
 
 def export_evaluation_images(
@@ -194,7 +196,11 @@ def main():
         "--train_dist",
         type=str,
         default="uniform",
-        choices=["uniform", "logit_normal", "plateau_logit_normal"],
+        choices=["uniform", "logit_normal", "plateau_logit_normal", "infonoise"],
+        help="Fixed training noise distributions, or 'infonoise' for the online "
+        "information-guided allocation of arXiv:2602.18647 (see src/infonoise.py). "
+        "InfoNoise knobs go through --dist_params too, e.g. "
+        '\'{"warmup_steps": 2000, "refresh_every": 1000, "gate_c": 0.15}\'.',
     )
     parser.add_argument(
         "--conditioning",
@@ -338,12 +344,55 @@ def main():
             sample_t_plateau_logit_normal, **dist_kwargs
         ),
     }
-    train_dist_fn = dist_fn_map[args.train_dist]
+
+    infonoise = None
+    if args.train_dist == "infonoise":
+        # Everything in --dist_params prefixed "warmup_" configures the fixed
+        # prior pi_0 InfoNoise samples from until its first refresh; the rest
+        # configures the estimator itself.
+        info_kwargs = dict(dist_kwargs)
+        warmup_prior = info_kwargs.pop("warmup_prior", "logit_normal")
+        warmup_prior_params = {
+            k[len("warmup_prior_") :]: v
+            for k, v in list(info_kwargs.items())
+            if k.startswith("warmup_prior_")
+        }
+        for k in list(info_kwargs):
+            if k.startswith("warmup_prior_"):
+                info_kwargs.pop(k)
+        base_dists = {
+            "uniform": sample_t_uniform,
+            "logit_normal": sample_t_logit_normal,
+            "plateau_logit_normal": sample_t_plateau_logit_normal,
+        }
+        if warmup_prior not in base_dists:
+            raise ValueError(
+                f"--dist_params warmup_prior must be one of {sorted(base_dists)}, "
+                f"got {warmup_prior!r}"
+            )
+        # built from the raw sample_t_* function, not dist_fn_map: the entries
+        # there are already bound to the *whole* --dist_params dict, which for
+        # infonoise is estimator config the prior knows nothing about
+        warmup_fn = base_dists[warmup_prior]
+        if warmup_prior_params:
+            warmup_fn = functools.partial(warmup_fn, **warmup_prior_params)
+        infonoise = InfoNoiseSampler(
+            warmup_sample_fn=warmup_fn,
+            log_path=os.path.join(
+                "logs", "metrics", exp_name, "infonoise_profile.jsonl"
+            ),
+            **info_kwargs,
+        )
+        train_dist_fn = infonoise.sample_t
+    else:
+        train_dist_fn = dist_fn_map[args.train_dist]
 
     print(
         f"training for {args.epochs} epochs using {args.train_dist} distribution with conditioning={args.conditioning}"
     )
     print(f"log training metrics to: {args.log_file}")
+
+    global_step = 0
 
     for epoch in range(1, args.epochs + 1):
         start_time = time.time()
@@ -366,18 +415,32 @@ def main():
 
         for i in range(num_batches):
             key, step_key = jax.random.split(key)
+            # split exactly as make_step used to internally, so the noise stream
+            # is unchanged for a given --seed and old runs stay reproducible
+            key_noise, key_time = jax.random.split(step_key)
+            t = train_dist_fn(key_time, batch_size)
+
             batch_labels = batched_labels[i] if batched_labels is not None else None
-            model, opt_state, loss = make_step(
+            model, opt_state, loss, unweighted = make_step(
                 model,
                 opt_state,
                 batched_data[i],
-                step_key,
-                train_dist_fn,
+                key_noise,
+                t,
                 args.conditioning,
                 batch_labels,
                 cond_items,
             )
             epoch_loss += loss
+
+            if infonoise is not None:
+                infonoise.observe(t, unweighted)
+                if infonoise.maybe_refresh(global_step):
+                    print(
+                        f"  infonoise refresh @ step {global_step}: "
+                        f"{json.dumps(infonoise.profile_summary())}"
+                    )
+            global_step += 1
 
         avg_loss = (epoch_loss / num_batches).item()
         epoch_time = time.time() - start_time
@@ -405,6 +468,8 @@ def main():
             save_checkpoint(model, epoch, args.checkpoint_dir, exp_name)
 
             data = {"epoch": epoch, "loss": avg_loss}
+            if infonoise is not None:
+                data["infonoise"] = infonoise.profile_summary()
             with open(args.log_file, "a") as f:
                 f.write(json.dumps(data) + "\n\n\n")
 
