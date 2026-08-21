@@ -4,6 +4,7 @@ import torch
 from cleanfid import fid
 
 from src.datasets import DATASETS
+from src.fid_weights import ensure_inception_weights
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 8
@@ -25,6 +26,7 @@ def main():
     if fid.test_stats_exists(stats_name, mode="clean"):
         print(f"'{stats_name}' stats already cached, nothing to do.")
         return
+    ensure_inception_weights()
     print(f"Caching real-image FID stats as '{stats_name}'...")
     fid.make_custom_stats(
         stats_name, real_dir, mode="clean", device=DEVICE, num_workers=NUM_WORKERS

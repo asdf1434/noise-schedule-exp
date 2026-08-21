@@ -10,6 +10,7 @@ import torch
 from cleanfid import fid
 
 from src.datasets import DATASETS
+from src.fid_weights import ensure_inception_weights
 from src.naming import parse_exp_name
 
 # FID eval takes forever on cpu
@@ -71,6 +72,9 @@ def run_evaluation(
             f"Real-image FID stats '{real_stats_name}' aren't cached yet. Run "
             f"cache_real_stats.py --dataset {dataset} once first (see run_exp1_eval_stats.sh)."
         )
+    # cleanfid downloads these into node-local /tmp with a check that races
+    # when several array tasks share a node; stage them ourselves first.
+    ensure_inception_weights()
     # this gets built once per process on the real data
     feat_model = fid.build_feature_extractor("clean", DEVICE)
     ref_mu, ref_sigma = fid.get_reference_statistics(
