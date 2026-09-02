@@ -4,7 +4,7 @@ contains conditioning variants for question 2
 defines all of them in the same place for convenience
 """
 
-from typing import Optional
+from typing import Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -98,8 +98,13 @@ CONDITIONING_PARAMS = {
 }
 
 
-def _param(name: str, params) -> float:
-    """The single tunable for this variant, or its default if unset."""
+def _param(name: str, params) -> Union[int, float]:
+    """The single tunable for this variant, or its default if unset.
+
+    Return type is int|float, not float: lowres's default factor is the int 4,
+    and under install_import_hook jaxtyping rejects an int returned from a
+    -> float annotation, which broke --conditioning lowres outright.
+    """
     key, default = CONDITIONING_PARAMS[name]
     return dict(params or ()).get(key, default)
 

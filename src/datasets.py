@@ -47,6 +47,12 @@ class DatasetSpec:
     real_dir: str  # where generate_real_samples dumps + FID reads real images
     real_stats_name: str  # clean-fid cached-stats key (see cache_real_stats.py)
     load: Callable[..., object]
+    # Amplitude the loader multiplies the usual [-1, 1] data by. Only the
+    # rescaled variants set this. Samples are divided by it again before being
+    # written as PNGs, so FID is measured on the same visual content as the
+    # unscaled dataset (and can reuse its real images and cached stats) while
+    # training genuinely sees data of a different magnitude.
+    sample_scale: float = 1.0
 
 
 def _finalize(images_nhwc: np.ndarray) -> jnp.ndarray:
@@ -224,6 +230,30 @@ def get_fashion_mnist_dataloaders(batch_size: int, with_labels: bool = False):
 # levels produces on its own (gamma=2.5 gives 72.32), which makes it the largest
 # common target reachable by scaling *down* only -- so all five levels come out
 # at an identical spread with zero clipping.
+def _mnist_scaled_loader(scale: float):
+    """MNIST with every pixel multiplied by ``scale`` after the [-1, 1] mapping.
+
+    This is the cleanest "shifted regime" available to this repo, because the
+    shift is known in closed form. For x' = k x the Bayes error obeys
+    mmse'(sigma) = k^2 mmse(sigma / k), so the entropy-rate profile
+    rho*(sigma) ∝ mmse(sigma)/sigma^2 is the unscaled profile translated by
+    exactly a factor of k along sigma. A fixed logit_normal(0, 1) stays centred
+    at sigma ~ 1 and is therefore misplaced by log10(k) decades, while an online
+    estimator should follow the profile. Unlike the gamma variants, which pin
+    the spread at _GAMMA_TARGET_STD and so move only the tone distribution, this
+    moves signal magnitude and nothing else.
+    """
+
+    def load(batch_size: int, with_labels: bool = False):
+        out = get_mnist_dataloaders(batch_size, with_labels=with_labels)
+        if with_labels:
+            images, labels = out
+            return images * scale, labels
+        return out * scale
+
+    return load
+
+
 _GAMMA_TARGET_STD = 72.0
 
 
@@ -351,6 +381,33 @@ DATASETS = {
     ),
     # The tone-curve comparison -- same digits, same size, same model, only the
     # balance of hard black-and-white vs soft grey changes. See _gamma_transform.
+    # Rescaled MNIST: identical images, 10x the amplitude. Shares mnist's real
+    # images and cached FID stats on purpose -- samples are divided by
+    # sample_scale before being written, so they land back on mnist's scale and
+    # the comparison is like for like.
+    "mnist_x10": DatasetSpec(
+        name="mnist_x10",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real",
+        real_stats_name="mnist_real",
+        load=_mnist_scaled_loader(10.0),
+        sample_scale=10.0,
+    ),
+    # The downward shift, mirroring mnist_x10: identical images, 1/10th the
+    # amplitude, so the entropy-rate profile translates DOWN one decade instead
+    # of up. Same shared real images and cached FID stats.
+    "mnist_x0.1": DatasetSpec(
+        name="mnist_x0.1",
+        image_size=28,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real",
+        real_stats_name="mnist_real",
+        load=_mnist_scaled_loader(0.1),
+        sample_scale=0.1,
+    ),
     "mnist_g050": DatasetSpec(
         name="mnist_g050",
         image_size=28,

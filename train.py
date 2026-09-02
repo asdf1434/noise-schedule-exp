@@ -90,6 +90,7 @@ def export_evaluation_images(
     image_shape: tuple,
     eval_ref_images: Optional[Float[Array, "n 1 h w"]] = None,
     cond_params: tuple = (),
+    sample_scale: float = 1.0,
 ):
     """
     generate and save samples for different inference schedules
@@ -163,7 +164,13 @@ def export_evaluation_images(
 
         # save without running eval
         # do all the eval afterwards for speed/efficiency
-        save_images(np.concatenate(all_samples, axis=0)[:eval_samples], out_dir)
+        # Rescaled datasets (see DatasetSpec.sample_scale) train on data of a
+        # different amplitude, so divide back before writing: save_images maps
+        # [-1, 1] to bytes and clips, which would saturate every sample.
+        samples = np.concatenate(all_samples, axis=0)[:eval_samples]
+        if sample_scale != 1.0:
+            samples = samples / sample_scale
+        save_images(samples, out_dir)
         print(f"Exported samples for {schedule_name} into {out_dir}")
 
     print("-----------------------------------------")
@@ -462,6 +469,7 @@ def main():
                 image_shape,
                 eval_ref_images,
                 cond_items,
+                ds_spec.sample_scale,
             )
 
             # save metrics and checkpoint
