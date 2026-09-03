@@ -8,7 +8,7 @@
 # scheduler for 12h on all 80 tasks would cost queue priority for no reason.
 # Same grid shape, same arms, same fixed gate pivot -- submit both together.
 #
-#   1 dataset x 3 conditioning variants x 5 seeds = 15 tasks
+#   1 dataset x 1 conditioning variant x 5 seeds = 5 tasks
 #
 # eurosat64 is the most interesting cell in the whole grid. It is the ONLY
 # dataset where this project measured the sampling-schedule benefit going the
@@ -30,13 +30,14 @@
 #SBATCH --job-name=infonoise_grid64
 #SBATCH --account=vision-sitzmann
 #SBATCH --qos=lab-free
-#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-v100,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
-#SBATCH --exclude=andreas-h100-1,isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2,isola-3080-1
+#SBATCH --requeue
+#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
+#SBATCH --exclude=isola-v100-2,andreas-h100-1,isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2,isola-3080-1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=12:00:00
-#SBATCH --array=0-14
+#SBATCH --array=0-4
 #SBATCH --output=logs/slurm/slurm_infonoise_grid64_%A_%a.out
 
 set -e
@@ -52,13 +53,13 @@ source venv/bin/activate
 #   seed        = ID % SEEDS
 # ==========================================
 DATASETS=(eurosat64)
-CONDS=(none lowres inpaint)
+CONDS=(none)
 ARMS=(infonoise)
 NUM_SEEDS=5
 
 # Empty --dist_params keeps the auto gate rule and the name "dist-infonoise".
 # Set e.g. GATE_C='{"gate_c": 0.15}' once the pilot has been scored.
-GATE_C='{}'
+GATE_C='{"gate_c": 0.15}'
 
 TOTAL=$(( ${#DATASETS[@]} * ${#CONDS[@]} * ${#ARMS[@]} * NUM_SEEDS ))
 EXPECTED_MAX=$(( TOTAL - 1 ))

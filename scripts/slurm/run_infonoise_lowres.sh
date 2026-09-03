@@ -18,7 +18,13 @@
 # of shift that should move where a good schedule spends its batches.
 # (`class` is deliberately left out for now.)
 #
-#   3 datasets x 2 conditioning variants x 5 seeds = 30 tasks (~42 min each)
+#   3 datasets x lowres x 2 arms x 5 seeds = 30 tasks (~42 min each)
+#
+# SELF-CONTAINED PAIRING. Unlike the other grids this one runs its own
+# logit_normal(0,1) control, because `lowres` has NO fixed-schedule baselines
+# anywhere in results/master_fid_results.json -- the multi-dataset sweep only
+# ever covered cond-none and cond-inpaint. Reusing this script's `baseline`
+# arm is what makes the lowres cells comparable at all.
 #
 # eurosat64 is NOT here -- it trains at native 64x64 and needs a 12h walltime
 # instead of 3h. It gets run_infonoise_grid64.sh, same grid shape. Submit both.
@@ -50,7 +56,7 @@
 #   sbatch scripts/slurm/run_infonoise_grid64.sh
 # Score both afterwards with run_infonoise_grid_eval.sh (all four datasets).
 # ==========================================
-#SBATCH --job-name=infonoise_grid
+#SBATCH --job-name=infonoise_lowres
 #SBATCH --account=vision-sitzmann
 #SBATCH --qos=lab-free
 #SBATCH --requeue
@@ -61,7 +67,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=03:00:00
 #SBATCH --array=0-29
-#SBATCH --output=logs/slurm/slurm_infonoise_grid_%A_%a.out
+#SBATCH --output=logs/slurm/slurm_infonoise_lowres_%A_%a.out
 
 set -e
 
@@ -76,8 +82,8 @@ source venv/bin/activate
 #   seed        = ID % SEEDS
 # ==========================================
 DATASETS=(mnist fashion_mnist cifar10)
-CONDS=(none inpaint)
-ARMS=(infonoise)
+CONDS=(lowres)
+ARMS=(infonoise baseline)
 NUM_SEEDS=5
 
 # Empty --dist_params keeps the auto gate rule and the name "dist-infonoise".

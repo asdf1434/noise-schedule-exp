@@ -1,5 +1,6 @@
 import argparse
 import glob
+import sys
 import json
 import os
 import re
@@ -104,22 +105,32 @@ def run_evaluation(
     else:
         results = {}
 
-    pending_dirs = []
-    for schedule_dir in schedule_dirs:
+    # Shard the FULL sorted folder list, not the pending subset. Striding over
+    # pending folders looks equivalent and is not: it only covers every folder
+    # exactly once if every shard sees an identical pending list. As soon as one
+    # shard has partial results of its own -- preempted, killed by the time
+    # limit, or rerun after a failure -- its pending list is shorter, the stride
+    # lands on different folders, and the array both rescores some cells and
+    # silently skips others. That is how a 16-shard rerun of mnist_x10 came back
+    # with 1,356 of 1,620 cells and 686 duplicate writes. Sharding the full list
+    # makes a folder's owning shard a property of the folder alone, so a rerun
+    # of shard k always picks up exactly what shard k left unfinished.
+    my_all_dirs = schedule_dirs[shard::num_shards]
+
+    my_dirs = []
+    for schedule_dir in my_all_dirs:
         path_parts = Path(schedule_dir).parts
         experiment_name = path_parts[1]
         epoch_str = path_parts[2]
         schedule_name = path_parts[3]
         if epoch_str in results.get(experiment_name, {}).get(schedule_name, {}):
             continue
-        pending_dirs.append(schedule_dir)
+        my_dirs.append(schedule_dir)
 
-    # Give this shard every num_shards-th pending folder, so the whole sweep
-    # (across all array tasks) covers every folder exactly once.
-    my_dirs = pending_dirs[shard::num_shards]
     print(
         f"Shard {shard}/{num_shards}: scoring {len(my_dirs)} of "
-        f"{len(pending_dirs)} pending folders"
+        f"{len(my_all_dirs)} folders owned by this shard "
+        f"({len(my_all_dirs) - len(my_dirs)} already scored)"
     )
 
     for schedule_dir in my_dirs:
@@ -202,3 +213,13 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # Exit without running interpreter teardown. Tearing down the JAX and torch
+    # runtimes together segfaults on some nodes AFTER all results are written
+    # and flushed -- harmless to the data, but it makes the task exit non-zero,
+    # which stalls the `--dependency=afterok` merge stage at
+    # DependencyNeverSatisfied even though the scoring succeeded. That happened
+    # three times on 2026-09-02. Everything this script produces is written and
+    # closed inside main(), so there is nothing left to flush here.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
