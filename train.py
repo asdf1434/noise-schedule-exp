@@ -21,7 +21,7 @@ with install_import_hook("src", "beartype.beartype"):
     from src.conditioning import CONDITIONING
     from src.datasets import DATASETS
     from src.infonoise import InfoNoiseSampler
-    from src.loss import compute_loss_cond
+    from src.loss import LOSS_WEIGHTINGS, compute_loss_cond
     from src.model import UNet
     from src.naming import make_exp_name
     from src.schedules import (
@@ -54,6 +54,7 @@ def make_step(
     conditioning: str,
     labels: Optional[Int[Array, " batch"]] = None,
     cond_params: tuple = (),
+    loss_weighting: str = "vpred",
 ) -> tuple[eqx.Module, optax.OptState, Float[Array, ""], Float[Array, " batch"]]:
     """
     single batch
@@ -69,7 +70,7 @@ def make_step(
     noise = jax.random.normal(key_noise, clean_images.shape)
 
     loss_fn = lambda m: compute_loss_cond(
-        m, conditioning, clean_images, noise, t, labels, cond_params
+        m, conditioning, clean_images, noise, t, labels, cond_params, loss_weighting
     )
     (loss, unweighted), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model)
 
@@ -235,6 +236,18 @@ def main():
         help="# of sampling steps per eval sched",
     )
 
+    parser.add_argument(
+        "--loss_weighting",
+        type=str,
+        default="vpred",
+        choices=list(LOSS_WEIGHTINGS),
+        help="objective's loss weight w(sigma). 'vpred' (default) is "
+        "1/max(0.05, 1-t)^2; 'uniform' is w == 1. This decides how much the "
+        "training distribution matters at all: the effective allocation is "
+        "pi*w, so under 'vpred' the weight varies ~100x across sigma and "
+        "largely fixes where training effort lands regardless of pi. Appended "
+        "to the experiment name when non-default.",
+    )
     parser.add_argument("--dist_params", type=str, default="{}", help="schedule params")
     parser.add_argument(
         "--cond_params",
@@ -287,6 +300,7 @@ def main():
         dist_kwargs,
         args.seed,
         cond_params=cond_kwargs,
+        loss_weighting=args.loss_weighting,
     )
 
     os.makedirs(os.path.join("logs", "metrics", exp_name), exist_ok=True)
@@ -388,6 +402,7 @@ def main():
             log_path=os.path.join(
                 "logs", "metrics", exp_name, "infonoise_profile.jsonl"
             ),
+            loss_weighting=args.loss_weighting,
             **info_kwargs,
         )
         train_dist_fn = infonoise.sample_t
@@ -437,6 +452,7 @@ def main():
                 args.conditioning,
                 batch_labels,
                 cond_items,
+                args.loss_weighting,
             )
             epoch_loss += loss
 

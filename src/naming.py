@@ -26,6 +26,7 @@ def make_exp_name(
     dist_params: dict,
     seed: int,
     cond_params: Optional[dict] = None,
+    loss_weighting: str = "vpred",
 ) -> str:
     """``cond_params`` extends the conditioning token exactly as ``dist_params``
     extends the distribution token. It has to: conditioning settings used to be
@@ -36,6 +37,11 @@ def make_exp_name(
     existing result stays valid.
     """
     dist_token = f"{train_dist}" + "".join(f"_{k}_{v}" for k, v in dist_params.items())
+    # The objective's loss weighting changes what a given training distribution
+    # means, so runs under different weightings must not share a name. Appended
+    # only when non-default, so every existing experiment name is unchanged.
+    if loss_weighting != "vpred":
+        dist_token += f"_lw_{loss_weighting}"
     cond_token = f"{conditioning}" + "".join(
         f"_{k}_{v}" for k, v in sorted((cond_params or {}).items())
     )

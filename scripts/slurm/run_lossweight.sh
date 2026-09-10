@@ -1,0 +1,155 @@
+#!/bin/bash
+
+# ==========================================
+# Is InfoNoise actually good?
+#
+# WHY THE EARLIER RUNS COULD NOT ANSWER THIS. The effective allocation a run
+# sees is pi(sigma)*w(sigma). InfoNoise sets pi = rho_hat/w (Eq. 15), so its
+# effective allocation is rho_hat no matter what w is. A fixed arm's is
+# prior*w. Under this repo's default weighting w = 1/max(0.05, 1-t)^2, w spans
+# ~400 -> 1.2 across sigma in [0.01, 10], so it drags every fixed arm toward
+# low noise and lands them all in much the same place. Measured consequence on
+# mnist_x10 (epochs 80-100, 10 seeds, paired): a logit-normal centred at the
+# provably correct sigma = 10 is statistically indistinguishable from InfoNoise
+# sitting at sigma ~ 2 on 8 of 9 sampling schedules. Placement moves FID by
+# ~1.3x while the inference schedule moves it by ~4x. The measurement has no
+# resolution because the weight, not the training distribution, is doing the
+# allocating.
+#
+# WHAT w IS. Not a free knob -- it is the parameterization. For
+# z = t*x + (1-t)*eps, predicting x determines the eps and v predictions, and
+# ||v - v_hat||^2 = ||x - x_hat||^2 / (1-t)^2 exactly. So this repo's default
+# weight IS v-prediction MSE written in x-space, and --loss_weighting uniform
+# is plain x-prediction MSE: a different parameterization, not an ablation.
+#
+# WHY THAT IS THE RIGHT TEST ANYWAY. InfoNoise's effective allocation is
+# rho_hat under any w, while a fixed arm's is prior*w. The comparison is
+# therefore rho_hat vs prior*w. Under v-prediction, prior*w is already a
+# sensible allocation -- that is much of why v-prediction is the standard
+# choice -- which is exactly why the earlier runs came out flat: InfoNoise was
+# competing against a weighting that allocates well on its own. Under
+# x-prediction the weighting supplies a BAD allocation, so the method finally
+# has something to do. If InfoNoise recovers x-prediction toward v-prediction
+# quality, that is a real claim about what it is for.
+#
+# It also removes the sigma = 1 anchor that pinned pi near sigma ~ 2 regardless
+# of data scale (see UPDATE_david_2026-09-03.md and run_gridscale.sh), so the
+# InfoNoise arms here double as the mechanism test: if InfoNoise can track a
+# data-scale shift at all, its pi should now reach sigma ~ 20 on the x10 arms
+# instead of stalling at 2.3.
+#
+# ARMS (11 x 10 seeds = 110 tasks). Array order is by decreasing importance, so
+# a run that gets cut short still has the comparison that matters:
+#
+#   0-39    mnist_x10     prior / InfoNoise / oracle(sigma=10) / wide
+#   40-79   cifar10_x10   the same four, as replication on non-binary pixels
+#   80-109  mnist  (k=1)  prior / InfoNoise / wide, the no-shift control
+#
+#   prior   logit_normal(0, 1)          the default; centred at sigma = 1
+#   oracle  logit_normal(-ln 10, 1)     same shape, centred at sigma = 10
+#   wide    logit_normal(0, 2)          wrong centre, twice the width. This is
+#                                       the breadth control: if it matches
+#                                       InfoNoise, InfoNoise's advantage is
+#                                       coverage rather than placement.
+#
+# READING THE RESULT.
+#   InfoNoise ~ oracle >> prior, wide          -> InfoNoise places well. Good.
+#   InfoNoise ~ wide, both < oracle            -> the gain is breadth, not
+#                                                 placement. The paper's claim
+#                                                 does not hold here.
+#   InfoNoise ~ prior << oracle                -> InfoNoise fails outright.
+#   everything within noise                    -> even unweighted, placement
+#                                                 does not matter on this task;
+#                                                 report the null and move to a
+#                                                 setting where it does.
+#
+# KNOWN RISK. x-prediction MSE is dominated by the high-noise end, which is why
+# it is not the usual choice; absolute FID will likely be worse across the board
+# than the vpred runs. That is expected and does not invalidate the comparison,
+# which is between arms at matched weighting -- but if EVERY arm collapses, the
+# run is uninformative rather than negative. Check one arm's samples before
+# reading the table.
+#
+# NOT COMPARABLE to any existing FID number. Changing w changes the objective.
+# Experiment names carry _lw_uniform so nothing collides with earlier results.
+#
+#   TRAIN=$(sbatch --parsable scripts/slurm/run_lossweight.sh)
+#   PREP=$(sbatch --parsable --dependency=afterok:$TRAIN scripts/slurm/run_lw_eval_prep.sh)
+#   EVAL=$(sbatch --parsable --dependency=afterok:$PREP scripts/slurm/run_lw_eval.sh)
+#   sbatch --dependency=afterok:$EVAL scripts/slurm/run_exp1_eval_merge.sh
+# or:
+#   scripts/slurm/run_pipeline.sh scripts/slurm/run_lossweight.sh \
+#       scripts/slurm/run_lw_eval_prep.sh scripts/slurm/run_lw_eval.sh \
+#       scripts/slurm/run_exp1_eval_merge.sh
+# ==========================================
+#SBATCH --job-name=lossweight
+#SBATCH --account=vision-sitzmann
+#SBATCH --qos=lab-free
+#SBATCH --requeue
+#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
+#SBATCH --exclude=isola-v100-2,andreas-h100-1,isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2,isola-3080-1
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+#SBATCH --time=03:00:00
+#SBATCH --array=0-109
+#SBATCH --output=logs/slurm/slurm_lossweight_%A_%a.out
+
+set -e
+
+mkdir -p logs/slurm
+mkdir -p logs/metrics
+
+source venv/bin/activate
+
+NUM_SEEDS=10
+
+# "<dataset>|<train_dist>|<dist_params>" -- pipe-separated so the JSON keeps its
+# spaces and commas.
+ARMS=(
+    "mnist_x10|logit_normal|{\"mu\": 0.0, \"sigma\": 1.0}"
+    "mnist_x10|infonoise|{\"sigma_min\": 0.02, \"sigma_max\": 800.0}"
+    "mnist_x10|logit_normal|{\"mu\": -2.3026, \"sigma\": 1.0}"
+    "mnist_x10|logit_normal|{\"mu\": 0.0, \"sigma\": 2.0}"
+    "cifar10_x10|logit_normal|{\"mu\": 0.0, \"sigma\": 1.0}"
+    "cifar10_x10|infonoise|{\"sigma_min\": 0.02, \"sigma_max\": 800.0}"
+    "cifar10_x10|logit_normal|{\"mu\": -2.3026, \"sigma\": 1.0}"
+    "cifar10_x10|logit_normal|{\"mu\": 0.0, \"sigma\": 2.0}"
+    "mnist|logit_normal|{\"mu\": 0.0, \"sigma\": 1.0}"
+    "mnist|infonoise|{}"
+    "mnist|logit_normal|{\"mu\": 0.0, \"sigma\": 2.0}"
+)
+
+TOTAL=$(( ${#ARMS[@]} * NUM_SEEDS ))
+EXPECTED_MAX=$(( TOTAL - 1 ))
+if [ "$SLURM_ARRAY_TASK_ID" -gt "$EXPECTED_MAX" ]; then
+    echo "ERROR: task $SLURM_ARRAY_TASK_ID exceeds the grid" \
+         "(${#ARMS[@]} arms x $NUM_SEEDS seeds = $TOTAL)." \
+         "Set --array=0-$EXPECTED_MAX in this file." >&2
+    exit 1
+fi
+
+IDX=$SLURM_ARRAY_TASK_ID
+ARM=${ARMS[$(( IDX / NUM_SEEDS ))]}
+SEED=$(( IDX % NUM_SEEDS ))
+
+DATASET=${ARM%%|*}
+REST=${ARM#*|}
+DIST=${REST%%|*}
+DIST_PARAMS=${REST#*|}
+
+echo "========================================"
+echo "Array task $IDX: dataset=$DATASET dist=$DIST seed=$SEED loss_weighting=uniform"
+echo "  dist_params=$DIST_PARAMS"
+echo "========================================"
+
+python -u train.py \
+    --dataset "$DATASET" \
+    --train_dist "$DIST" \
+    --dist_params "$DIST_PARAMS" \
+    --loss_weighting uniform \
+    --seed "$SEED"
+
+echo -e "\n========================================"
+echo "Array task $IDX ($DATASET/$DIST/seed$SEED, w=1) complete."
+echo "========================================"

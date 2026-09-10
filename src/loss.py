@@ -12,6 +12,30 @@ from src.conditioning import build_cond_channels
 # w(sigma) is the same fixed weight the objective actually uses.
 T_CLIP = 0.05
 
+# Named loss weightings, in sigma = (1-t)/t coordinates:
+#   "vpred"   w(sigma) = 1/max(T_CLIP, 1-t)^2, this repo's default and the
+#             x-prediction equivalent of v-prediction weighting (david.md).
+#   "uniform" w == 1, i.e. plain unweighted x-space MSE.
+# The weighting matters to more than the gradient: the effective allocation a
+# training run sees is pi(sigma)*w(sigma), and src/infonoise.py divides w back
+# out when it builds pi (Eq. 15). With "vpred", w varies by ~100x across the
+# useful sigma range and so dominates where training effort lands whatever pi
+# does; with "uniform" the training distribution IS the allocation. Anything
+# comparing training distributions on FID has to hold this fixed.
+LOSS_WEIGHTINGS = ("vpred", "uniform")
+DEFAULT_LOSS_WEIGHTING = "vpred"
+
+
+def weight_of_t(t, loss_weighting: str = DEFAULT_LOSS_WEIGHTING):
+    """Per-sample loss weight for the given weighting, in t coordinates."""
+    if loss_weighting == "uniform":
+        return jnp.ones_like(t)
+    if loss_weighting == "vpred":
+        return 1.0 / jnp.maximum(T_CLIP, 1 - t) ** 2
+    raise ValueError(
+        f"unknown loss_weighting {loss_weighting!r}; expected one of {LOSS_WEIGHTINGS}"
+    )
+
 # def compute_loss_jit(model: eqx.Module, clean_images: Float[Array, "b c h w"], noise: Float[Array, "b c h w"], t: Float[Array, "b 1 1 1"], t_clip: float = 0.05) -> Float[Array, ""]:
 #     z = t * clean_images + (1 - t) * noise
 #     x_pred = jax.vmap(model)(z, t.squeeze())
@@ -25,10 +49,11 @@ def compute_loss_x(
     clean_images: Float[Array, "b c h w"],
     noise: Float[Array, "b c h w"],
     t: Float[Array, "b 1 1 1"],
+    loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
 ) -> Float[Array, ""]:
     z = t * clean_images + (1 - t) * noise
     x_pred = jax.vmap(model)(z, t.reshape(-1))
-    return jnp.mean((x_pred - clean_images) ** 2 / jnp.maximum(T_CLIP, 1 - t) ** 2)
+    return jnp.mean((x_pred - clean_images) ** 2 * weight_of_t(t, loss_weighting))
 
 
 def compute_loss_cond(
@@ -39,6 +64,7 @@ def compute_loss_cond(
     t: Float[Array, "b 1 1 1"],
     labels: Optional[Int[Array, " b"]] = None,
     cond_params=(),
+    loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
 ) -> tuple[Float[Array, ""], Float[Array, " b"]]:
     """
     same x-pred loss as in compute_loss_x above
@@ -60,7 +86,7 @@ def compute_loss_cond(
         x_pred = jax.vmap(model)(model_input, t.reshape(-1))
 
     sq_err = (x_pred - clean_images) ** 2
-    weighted = jnp.mean(sq_err / jnp.maximum(T_CLIP, 1 - t) ** 2)
+    weighted = jnp.mean(sq_err * weight_of_t(t, loss_weighting))
     # Per-sample *unweighted* denoising error, i.e. an online sample of
     # mmse(t). Unused by the objective; InfoNoise (src/infonoise.py) bins it to
     # estimate the information profile. Free to compute -- it is the same
