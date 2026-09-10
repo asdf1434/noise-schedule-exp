@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # ==========================================
-# Stage 1 of 3 -- scoring prep for both shifted-regime datasets.
+# Stage 1 of 3 -- scoring prep for all four shifted-regime datasets.
 #
 # Supersedes run_mnist_x10_eval_prep.sh, which covered mnist_x10 alone.
 #
-# Both datasets share mnist's real images and cached stats (real_dir=data/real,
-# real_stats_name=mnist_real), so cache_real_stats is normally a no-op here. It
-# stays because it is idempotent and a missing cache makes evaluate_fid.py exit
-# without scoring anything.
+# Each scaled dataset shares its unscaled parent's real images and cached stats
+# (mnist_x* -> data/real / mnist_real, cifar10_x* -> data/real_cifar10 /
+# cifar10_real), so cache_real_stats is normally a no-op here. It stays because
+# it is idempotent and a missing cache makes evaluate_fid.py exit without
+# scoring anything.
 #
 # The seeding step is the one that matters: merge_fid_shards.py rebuilds
 # master_fid_results.json purely from the shard files it finds, so any cell no
@@ -33,11 +34,11 @@ mkdir -p logs/slurm
 source venv/bin/activate
 
 # Keep in sync with run_shift_eval.sh.
-DATASETS=(mnist_x10 mnist_x0.1)
+DATASETS=(mnist_x10 mnist_x0.1 cifar10_x10 cifar10_x0.1)
 NUM_SHARDS=16
 
 for DS in "${DATASETS[@]}"; do
-    echo "=== caching real-image FID stats for $DS (shares mnist's) ==="
+    echo "=== caching real-image FID stats for $DS (shares its unscaled parent's) ==="
     python -u cache_real_stats.py --dataset "$DS"
 done
 

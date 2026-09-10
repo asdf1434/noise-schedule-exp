@@ -1,16 +1,15 @@
 #!/bin/bash
 
 # ==========================================
-# Stage 2 of 3 -- score both shifted-regime datasets.
+# Stage 2 of 3 -- score all four shifted-regime datasets.
 #
 # Supersedes run_mnist_x10_eval.sh. evaluate_fid.py filters eval_runs/ by
 # dataset, so this is a (dataset x shard) array:
 #
 #   dataset_idx = ID / NUM_SHARDS,  shard = ID % NUM_SHARDS
 #
-# 2 datasets x 16 shards = 32 tasks. Each dataset has 40 experiments x 10 epochs
-# x 9 step spacings = 3,600 folders, so ~225 per shard. mnist_x10's first 1,620
-# are already scored and will be skipped.
+# 4 datasets x 16 shards = 64 tasks. Anything already present in
+# master_fid_results.json is skipped, so a rerun only picks up new experiments.
 #
 # Sharding is over the FULL folder list (fixed 2026-09-02), so a rerun of shard
 # k picks up exactly what shard k left unfinished -- reruns no longer leave gaps.
@@ -29,7 +28,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=8G
 #SBATCH --time=03:30:00
-#SBATCH --array=0-31
+#SBATCH --array=0-63
 #SBATCH --output=logs/slurm/slurm_shift_eval_%A_%a.out
 
 set -e
@@ -37,7 +36,7 @@ mkdir -p logs/slurm
 source venv/bin/activate
 
 # Keep in sync with run_shift_eval_prep.sh.
-DATASETS=(mnist_x10 mnist_x0.1)
+DATASETS=(mnist_x10 mnist_x0.1 cifar10_x10 cifar10_x0.1)
 NUM_SHARDS=16
 
 TOTAL=$(( ${#DATASETS[@]} * NUM_SHARDS ))

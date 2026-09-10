@@ -230,8 +230,9 @@ def get_fashion_mnist_dataloaders(batch_size: int, with_labels: bool = False):
 # levels produces on its own (gamma=2.5 gives 72.32), which makes it the largest
 # common target reachable by scaling *down* only -- so all five levels come out
 # at an identical spread with zero clipping.
-def _mnist_scaled_loader(scale: float):
-    """MNIST with every pixel multiplied by ``scale`` after the [-1, 1] mapping.
+def _scaled_loader(base_loader, scale: float):
+    """Wrap a loader so every pixel is multiplied by ``scale`` after the
+    [-1, 1] mapping.
 
     This is the cleanest "shifted regime" available to this repo, because the
     shift is known in closed form. For x' = k x the Bayes error obeys
@@ -245,13 +246,21 @@ def _mnist_scaled_loader(scale: float):
     """
 
     def load(batch_size: int, with_labels: bool = False):
-        out = get_mnist_dataloaders(batch_size, with_labels=with_labels)
+        out = base_loader(batch_size, with_labels=with_labels)
         if with_labels:
             images, labels = out
             return images * scale, labels
         return out * scale
 
     return load
+
+
+def _mnist_scaled_loader(scale: float):
+    return _scaled_loader(get_mnist_dataloaders, scale)
+
+
+def _cifar10_scaled_loader(scale: float):
+    return _scaled_loader(get_cifar10_dataloaders, scale)
 
 
 _GAMMA_TARGET_STD = 72.0
@@ -478,6 +487,31 @@ DATASETS = {
         real_dir="data/real_cifar10",
         real_stats_name="cifar10_real",
         load=get_cifar10_dataloaders,
+    ),
+    # Rescaled CIFAR-10, mirroring mnist_x10 / mnist_x0.1: identical images at
+    # 10x and 1/10th the amplitude. Shares cifar10's real images and cached FID
+    # stats, since samples are divided by sample_scale before being written.
+    # Second dataset for the scale-shift test, to check the InfoNoise result is
+    # not an artifact of MNIST's near-binary pixel statistics.
+    "cifar10_x10": DatasetSpec(
+        name="cifar10_x10",
+        image_size=32,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_cifar10",
+        real_stats_name="cifar10_real",
+        load=_cifar10_scaled_loader(10.0),
+        sample_scale=10.0,
+    ),
+    "cifar10_x0.1": DatasetSpec(
+        name="cifar10_x0.1",
+        image_size=32,
+        channels=1,
+        num_classes=10,
+        real_dir="data/real_cifar10",
+        real_stats_name="cifar10_real",
+        load=_cifar10_scaled_loader(0.1),
+        sample_scale=0.1,
     ),
     "eurosat": DatasetSpec(
         name="eurosat",
