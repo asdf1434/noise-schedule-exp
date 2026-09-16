@@ -9,6 +9,7 @@ from jaxtyping import Array, Float, Int, PRNGKeyArray
 from PIL import Image
 
 from src.conditioning import build_cond_channels, inject_known
+from src.loss import T_CLIP
 
 # Dataset loading lives in src/datasets.py now (registry + per-dataset loaders);
 # re-exported here so existing `from src.utils import get_dataloaders` callers
@@ -35,6 +36,7 @@ def sample_batch_x(
     timesteps: Float[Array, " steps_plus_1"],
     batch_size: int,
     image_shape: tuple = (1, 28, 28),
+    t_clip: float = T_CLIP,
 ) -> Float[Array, "batch c h w"]:
     """
     sample from model by predicting x
@@ -57,7 +59,7 @@ def sample_batch_x(
         x_pred = jax.vmap(model)(z, t_batched)
 
         # calculate velocity
-        v = (x_pred - z) / jnp.maximum(1 - t, 0.05)
+        v = (x_pred - z) / jnp.maximum(1 - t, t_clip)
 
         z = z + (t_next - t) * v
         return z, None
@@ -78,6 +80,7 @@ def sample_batch_cond(
     labels: Optional[Int[Array, " batch"]] = None,
     image_shape: tuple = (1, 28, 28),
     cond_params=(),
+    t_clip: float = T_CLIP,
 ) -> Float[Array, "batch c h w"]:
     """
     same as sample_batch_x except it understands conditioning
@@ -130,7 +133,7 @@ def sample_batch_cond(
         else:
             x_pred = jax.vmap(model)(model_input, t_batched)
 
-        v = (x_pred - z) / jnp.maximum(1 - t, 0.05)
+        v = (x_pred - z) / jnp.maximum(1 - t, t_clip)
         z = z + (t_next - t) * v
 
     if conditioning == "inpaint":

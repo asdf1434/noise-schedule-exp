@@ -28,15 +28,15 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=8G
 #SBATCH --time=03:30:00
-#SBATCH --array=0-31
+#SBATCH --array=0-47
 #SBATCH --output=logs/slurm/slurm_sweep_eval_%A_%a.out
 
 set -e
 mkdir -p logs/slurm
 source venv/bin/activate
 
-# Keep in sync with run_lw_eval_prep.sh.
-DATASETS=(mnist mnist_x10)
+# Keep in sync with run_sweep_eval_prep.sh.
+DATASETS=(mnist mnist_x10 mnist_x0.1)
 NUM_SHARDS=16
 
 TOTAL=$(( ${#DATASETS[@]} * NUM_SHARDS ))

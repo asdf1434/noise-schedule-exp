@@ -27,6 +27,7 @@ def make_exp_name(
     seed: int,
     cond_params: Optional[dict] = None,
     loss_weighting: str = "vpred",
+    t_clip: float = 0.05,
 ) -> str:
     """``cond_params`` extends the conditioning token exactly as ``dist_params``
     extends the distribution token. It has to: conditioning settings used to be
@@ -42,6 +43,11 @@ def make_exp_name(
     # only when non-default, so every existing experiment name is unchanged.
     if loss_weighting != "vpred":
         dist_token += f"_lw_{loss_weighting}"
+    # Same reasoning as loss_weighting: the objective's dead zone (see T_CLIP in
+    # src/loss.py) changes what a training distribution means, so runs at
+    # different floors must not share a name. Appended only when non-default.
+    if float(t_clip) != 0.05:
+        dist_token += f"_tclip_{t_clip}"
     cond_token = f"{conditioning}" + "".join(
         f"_{k}_{v}" for k, v in sorted((cond_params or {}).items())
     )

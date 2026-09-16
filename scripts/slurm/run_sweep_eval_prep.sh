@@ -34,7 +34,7 @@ mkdir -p logs/slurm
 source venv/bin/activate
 
 # Keep in sync with run_sweep_eval.sh.
-DATASETS=(mnist mnist_x10)
+DATASETS=(mnist mnist_x10 mnist_x0.1)
 NUM_SHARDS=16
 
 for DS in "${DATASETS[@]}"; do

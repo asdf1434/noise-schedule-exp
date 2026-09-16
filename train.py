@@ -55,6 +55,7 @@ def make_step(
     labels: Optional[Int[Array, " batch"]] = None,
     cond_params: tuple = (),
     loss_weighting: str = "vpred",
+    t_clip: float = 0.05,
 ) -> tuple[eqx.Module, optax.OptState, Float[Array, ""], Float[Array, " batch"]]:
     """
     single batch
@@ -70,7 +71,15 @@ def make_step(
     noise = jax.random.normal(key_noise, clean_images.shape)
 
     loss_fn = lambda m: compute_loss_cond(
-        m, conditioning, clean_images, noise, t, labels, cond_params, loss_weighting
+        m,
+        conditioning,
+        clean_images,
+        noise,
+        t,
+        labels,
+        cond_params,
+        loss_weighting,
+        t_clip,
     )
     (loss, unweighted), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model)
 
@@ -92,6 +101,7 @@ def export_evaluation_images(
     eval_ref_images: Optional[Float[Array, "n 1 h w"]] = None,
     cond_params: tuple = (),
     sample_scale: float = 1.0,
+    t_clip: float = 0.05,
 ):
     """
     generate and save samples for different inference schedules
@@ -147,7 +157,12 @@ def export_evaluation_images(
 
             if conditioning == "none":
                 batch_samples = sample_batch_x(
-                    model, sample_key, timesteps, eval_batch_size, image_shape
+                    model,
+                    sample_key,
+                    timesteps,
+                    eval_batch_size,
+                    image_shape,
+                    t_clip=t_clip,
                 )
             else:
                 batch_samples = sample_batch_cond(
@@ -160,6 +175,7 @@ def export_evaluation_images(
                     labels=labels,
                     image_shape=image_shape,
                     cond_params=cond_params,
+                    t_clip=t_clip,
                 )
             all_samples.append(np.array(batch_samples))
 
@@ -248,6 +264,18 @@ def main():
         "largely fixes where training effort lands regardless of pi. Appended "
         "to the experiment name when non-default.",
     )
+    parser.add_argument(
+        "--t_clip",
+        type=float,
+        default=0.05,
+        help="floor on (1 - t) in the loss weight and in the sampler's velocity "
+        "(they must match). Creates a dead zone at sigma <= t_clip/(1 - t_clip), "
+        "= 0.0526 at the default. The default assumes unit-amplitude data; on a "
+        "dataset scaled down by k (e.g. mnist_x0.1) the informative sigma range "
+        "moves into that dead zone, so pass t_clip ~ 0.05*k there. Do NOT scale "
+        "it up for k > 1 -- that clips the informative range instead. Appended "
+        "to the experiment name when non-default.",
+    )
     parser.add_argument("--dist_params", type=str, default="{}", help="schedule params")
     parser.add_argument(
         "--cond_params",
@@ -301,6 +329,7 @@ def main():
         args.seed,
         cond_params=cond_kwargs,
         loss_weighting=args.loss_weighting,
+        t_clip=args.t_clip,
     )
 
     os.makedirs(os.path.join("logs", "metrics", exp_name), exist_ok=True)
@@ -403,6 +432,7 @@ def main():
                 "logs", "metrics", exp_name, "infonoise_profile.jsonl"
             ),
             loss_weighting=args.loss_weighting,
+            t_clip=args.t_clip,
             **info_kwargs,
         )
         train_dist_fn = infonoise.sample_t
@@ -453,6 +483,7 @@ def main():
                 batch_labels,
                 cond_items,
                 args.loss_weighting,
+                args.t_clip,
             )
             epoch_loss += loss
 
@@ -486,6 +517,7 @@ def main():
                 eval_ref_images,
                 cond_items,
                 ds_spec.sample_scale,
+                args.t_clip,
             )
 
             # save metrics and checkpoint

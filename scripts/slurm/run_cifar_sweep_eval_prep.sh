@@ -33,8 +33,8 @@ set -e
 mkdir -p logs/slurm
 source venv/bin/activate
 
-# Keep in sync with run_sweep_eval.sh.
-DATASETS=(cifar10_x10)
+# Keep in sync with run_cifar_sweep_eval.sh.
+DATASETS=(cifar10_x10 cifar10 cifar10_x0.1)
 NUM_SHARDS=16
 
 for DS in "${DATASETS[@]}"; do

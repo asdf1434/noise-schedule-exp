@@ -65,19 +65,22 @@ def t_of_sigma(sigma: np.ndarray) -> np.ndarray:
 
 
 def loss_weight_of_sigma(
-    sigma: np.ndarray, loss_weighting: str = DEFAULT_LOSS_WEIGHTING
+    sigma: np.ndarray,
+    loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
+    t_clip: float = T_CLIP,
 ) -> np.ndarray:
     """w(sigma): the objective's fixed loss weight, in sigma coords.
 
     Must mirror src.loss.weight_of_t exactly -- Eq. 15 divides this back out of
     rho_hat, so a mismatch silently biases pi. With 1 - t = sigma / (1 + sigma):
-    "vpred" is 1/max(T_CLIP, 1-t)^2 and "uniform" is 1.
+    "vpred" is 1/max(t_clip, 1-t)^2 and "uniform" is 1. ``t_clip`` must be the
+    same value train.py passed to the objective (--t_clip).
     """
     if loss_weighting == "uniform":
         return np.ones_like(np.asarray(sigma, dtype=float))
     if loss_weighting == "vpred":
         one_minus_t = sigma / (1.0 + sigma)
-        return 1.0 / np.maximum(T_CLIP, one_minus_t) ** 2
+        return 1.0 / np.maximum(t_clip, one_minus_t) ** 2
     raise ValueError(f"unknown loss_weighting {loss_weighting!r}")
 
 
@@ -129,6 +132,7 @@ class InfoNoiseSampler:
         gate_c: Optional[float] = None,
         gate_p: float = 0.002,
         loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
+        t_clip: float = T_CLIP,
         log_path: Optional[str] = None,
     ):
         if sigma_min <= 0 or sigma_max <= sigma_min:
@@ -147,6 +151,7 @@ class InfoNoiseSampler:
         self.gate_c = None if gate_c is None else float(gate_c)
         self.gate_p = float(gate_p)
         self.loss_weighting = str(loss_weighting)
+        self.t_clip = float(t_clip)
         self.log_path = log_path
 
         # fixed grid, uniform in log sigma (the paper bins losses in log sigma)
@@ -158,7 +163,9 @@ class InfoNoiseSampler:
         self.d_log = float(self.log_edges[1] - self.log_edges[0])
 
         # w is fixed by the objective, so it can be precomputed once
-        self.weights = loss_weight_of_sigma(self.centers, self.loss_weighting)
+        self.weights = loss_weight_of_sigma(
+            self.centers, self.loss_weighting, self.t_clip
+        )
 
         # m_hat(u) === 1 at init (Algorithm 1, line 1); replaced wholesale at the
         # first refresh since "1" is not in the units of an actual denoising loss
