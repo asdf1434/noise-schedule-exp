@@ -292,31 +292,17 @@ def plot_measured_bins(profiles, built, out_dir):
             label=r"$\hat{m}$, never measured (frozen)",
         )
 
-        r = m_hat / sigma**3
-        c_now = gate_c_from(r, sigma, np.ones_like(ok))
-        c_fix = gate_c_from(r, sigma, ok)
-        c_target = b["gate_c_gaussian"]
-        for value, color, label in (
-            (c_now, C_INFO, "c, all bins"),
-            (c_fix, "#2b6cb0", "c, measured only"),
-            (c_target, C_GAUSS, "c, target"),
-        ):
-            ax.axvline(value, color=color, lw=1.3, ls=":")
-
         ratio = m_hat[ok] / b["mmse_gaussian"][ok]
         ax.text(
             0.015,
             0.975,
-            f"{int((~ok).sum())} of {len(sigma)} bins never measured; "
-            f"measured range $\\sigma\\in$[{sigma[ok][0]:.2g}, {sigma[ok][-1]:.2g}]\n"
-            f"$\\hat{{m}}$/target on measured bins: {ratio.min():.2f} to {ratio.max():.1f}x\n"
-            f"gate $c$   all bins {c_now:.3g}   measured only {c_fix:.3g}\n"
-            f"           target {c_target:.3g}   "
-            f"(gap {c_target / c_now:.0f}x $\\rightarrow$ {c_target / c_fix:.1f}x)",
+            f"$\\hat{{m}}$ is {ratio.min():.2f}-{ratio.max():.1f}x the target "
+            f"where it is measured\n"
+            f"{int((~ok).sum())} of {len(sigma)} bins never measured (shaded)",
             transform=ax.transAxes,
             va="top",
             ha="left",
-            fontsize=8.3,
+            fontsize=9,
             bbox=dict(boxstyle="round,pad=.36", fc="white", ec="#ccc", alpha=0.94),
         )
         ax.set_xscale("log")
@@ -332,19 +318,17 @@ def plot_measured_bins(profiles, built, out_dir):
     fig.legend(handles, labels, fontsize=9.5, loc="lower center", ncol=4,
                bbox_to_anchor=(0.5, 0.105), frameon=False)
     fig.suptitle(
-        "The same comparison, with the bins the estimator never measures marked",
+        r"The model's estimate $\hat{m}$ against the closed-form MMSE it is estimating",
         fontsize=13,
     )
     fig.text(
         0.5,
         0.012,
-        "Shaded: bins drawing fewer than min_bin_count samples per refresh window, so refresh() never updates them. At the first refresh np.interp fills them by CLAMPING to the lowest observed\n"
-        "bin (src/infonoise.py:267), and afterwards they keep that value forever (line 273) -- which is the flat shelf, not a measurement. The gate rule normalizes m_hat/sigma^3 by its peak over the\n"
-        "WHOLE grid, and in four of six cells that peak is bin 0, inside the shaded region. Dotted verticals: the pivot as computed (red), recomputed ignoring frozen bins (blue), and from the target (gold).\n"
-        "Which bins are frozen is estimated from the sampling density, since acc_count is not logged.",
+        "Shaded bins draw too few samples per refresh window for refresh() to ever update them, so their value is not a measurement -- np.interp fills them once by clamping to the lowest observed bin\n"
+        "and they keep it for the whole run. Read the solid red only. (Which bins those are is estimated from the sampling density; acc_count is not logged.)",
         ha="center", fontsize=8.3, color="#666",
     )
-    fig.tight_layout(rect=[0, 0.165, 1, 0.945])
+    fig.tight_layout(rect=[0, 0.125, 1, 0.945])
     path = os.path.join(out_dir, "p8_measured_bins.png")
     fig.savefig(path, dpi=150)
     print(f"wrote {path}")
