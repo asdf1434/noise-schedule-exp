@@ -27,7 +27,7 @@ T_CLIP = 0.05
 
 # Named loss weightings, in sigma = (1-t)/t coordinates:
 #   "vpred"   w(sigma) = 1/max(T_CLIP, 1-t)^2, this repo's default and the
-#             x-prediction equivalent of v-prediction weighting (david.md).
+#             x-prediction equivalent of v-prediction weighting (docs/david.md).
 #   "uniform" w == 1, i.e. plain unweighted x-space MSE.
 # The weighting matters to more than the gradient: the effective allocation a
 # training run sees is pi(sigma)*w(sigma), and src/infonoise.py divides w back

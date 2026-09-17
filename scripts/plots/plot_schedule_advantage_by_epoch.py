@@ -2,7 +2,7 @@
 
 """Does the sampling-schedule advantage change over training?
 
-This is the "free" confound test from UPDATE_david_2026-07-29.md: the schedule
+This is the "free" confound test from docs/updates/UPDATE_david_2026-07-29.md: the schedule
 benefit (shifted_coarse vs uniform steps) shrinks and reverses as we move
 MNIST -> Fashion-MNIST -> CIFAR-10 -> EuroSAT-64, but dataset complexity and
 model underfit are confounded across those groups. Within a single group,
