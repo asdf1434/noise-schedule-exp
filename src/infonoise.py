@@ -280,25 +280,13 @@ class InfoNoiseSampler:
         self.acc_sum[:] = 0.0
         self.acc_count[:] = 0.0
 
-        # Eq. 13. q_hat_sigma is the density per d sigma, q_hat the density per
-        # d log sigma (= sigma * q_hat_sigma), which is the coordinate the
-        # sampler and the paper's figures use.
-        q_hat_sigma = self.m_hat / self.centers**3
-        q_hat = self.m_hat / self.centers**2
-        gate_c = self._resolve_gate_c(q_hat_sigma)
-        gate = self.centers**self.gate_n / (
-            self.centers**self.gate_n + gate_c**self.gate_n
-        )
-        r = q_hat * gate  # Eq. 14
-        total = float(np.sum(r) * self.d_log)
-        if not np.isfinite(total) or total <= 0:
+        allocation = self.allocation_from_m_hat(self.m_hat)
+        if allocation is None:
             return
-        rho_hat = r / total
-
-        # Eq. 15: compensate the *fixed* loss weight so the induced allocation
-        # phi = pi*w follows rho_hat. The objective is untouched.
-        pi = rho_hat / self.weights
-        pi = pi / (np.sum(pi) * self.d_log)
+        q_hat = allocation["q_hat"]
+        rho_hat = allocation["rho_hat"]
+        pi = allocation["pi"]
+        gate_c = allocation["gate_c"]
 
         self.pi = pi
         cdf = np.concatenate([[0.0], np.cumsum(pi) * self.d_log])
@@ -327,6 +315,55 @@ class InfoNoiseSampler:
             )
 
         self._log_refresh(step, rho_hat, q_hat)
+
+    def allocation_from_m_hat(self, m_hat: np.ndarray) -> Optional[dict]:
+        """Eq. 13-15: turn a profile estimate on this grid into a density pi.
+
+        Split out of `refresh` so that the same conversion can be applied to an
+        m_hat this sampler did not measure -- in particular the closed-form
+        mmse(sigma) computed from the dataset itself
+        (scripts/analysis/closed_form_mmse.py). Running both through one code
+        path is what makes "what InfoNoise learned" and "what it should have
+        learned" comparable: any difference between the two curves is
+        attributable to the input, since nothing downstream of it differs.
+
+        Returns None when the input carries no mass, matching `refresh`'s
+        behaviour of leaving the current density in place.
+        """
+        m_hat = np.asarray(m_hat, dtype=float)
+        if m_hat.shape != self.centers.shape:
+            raise ValueError(
+                f"m_hat has shape {m_hat.shape}, expected {self.centers.shape} "
+                f"(num_bins={self.num_bins})"
+            )
+
+        # q_hat_sigma is the density per d sigma, q_hat the density per d log
+        # sigma (= sigma * q_hat_sigma), which is the coordinate the sampler and
+        # the paper's figures use.
+        q_hat_sigma = m_hat / self.centers**3
+        q_hat = m_hat / self.centers**2
+        gate_c = self._resolve_gate_c(q_hat_sigma)
+        gate = self.centers**self.gate_n / (
+            self.centers**self.gate_n + gate_c**self.gate_n
+        )
+        r = q_hat * gate  # Eq. 14
+        total = float(np.sum(r) * self.d_log)
+        if not np.isfinite(total) or total <= 0:
+            return None
+        rho_hat = r / total
+
+        # Eq. 15: compensate the *fixed* loss weight so the induced allocation
+        # phi = pi*w follows rho_hat. The objective is untouched.
+        pi = rho_hat / self.weights
+        pi = pi / (np.sum(pi) * self.d_log)
+        return {
+            "q_hat_sigma": q_hat_sigma,
+            "q_hat": q_hat,
+            "gate": gate,
+            "gate_c": gate_c,
+            "rho_hat": rho_hat,
+            "pi": pi,
+        }
 
     def _resolve_gate_c(self, r: np.ndarray) -> float:
         """Gate pivot c, by the onset-of-information rule (Appendix B.6).
