@@ -16,6 +16,12 @@
 #SBATCH --account=vision-sitzmann
 #SBATCH --qos=lab-free
 #SBATCH --requeue
+# A partition list is REQUIRED: with qos=lab-free and no partition, sbatch
+# rejects the job outright ("partition nil, qos lab-free / Invalid qos
+# specification"). The per-experiment launchers this replaced all carried one;
+# it was dropped in the consolidation, which broke the merge stage everywhere.
+#SBATCH --partition=vision-shared-rtx2080ti,vision-shared-titanrtx,vision-shared-a6000,vision-shared-a100,vision-shared-l40s,vision-shared-h100,vision-shared-h200,vision-shared-rtx3090,vision-shared-rtx3080,vision-shared-rtx6000ada,vision-shared-rtx4090,csail-shared-h200,csail-shared-l40s
+#SBATCH --exclude=isola-v100-2,andreas-h100-1,isola-2080ti-4,gpu19-2.drl,gpu20-2.drl,improbablex002,gpu19-1.drl,isola-ada6000-1,gpu20-3.drl,freeman-titanrtx-2,isola-3080-1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --time=00:20:00
