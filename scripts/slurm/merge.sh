@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# ==========================================
+# Stage 3 of the FID chain: fold results/fid_shards/*.json back into
+# results/master_fid_results.json.
+#
+# Not experiment-specific -- merge_fid_shards.py takes whatever shard files are
+# present -- but it runs per chain so submit.sh can hang it off the eval array
+# with --dependency. Note the dependency submit.sh uses is afterany, not
+# afterok: a single preempted-and-not-retried shard should not strand the
+# results that every other shard already computed.
+#
+# Submitted by submit.sh; not usually run by hand.
+# ==========================================
+#SBATCH --job-name=merge
+#SBATCH --account=vision-sitzmann
+#SBATCH --qos=lab-free
+#SBATCH --requeue
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --time=00:20:00
+#SBATCH --output=logs/slurm/slurm_merge_%j.out
+
+set -e
+
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cd "$REPO_ROOT"
+
+echo "+ merge_fid_shards.py"
+if [ "${DRY_RUN:-0}" = "1" ]; then
+    exit 0
+fi
+
+mkdir -p logs/slurm
+source venv/bin/activate
+python -u merge_fid_shards.py

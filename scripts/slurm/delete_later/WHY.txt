@@ -1,0 +1,17 @@
+These are the per-experiment Slurm launchers this repo used before the
+consolidation. Each one is now an entry in scripts/slurm/experiments/, run
+through the generic train.sh / eval_prep.sh / eval.sh / merge.sh via submit.sh.
+
+They are kept only until the new dispatcher has been exercised on a real
+cluster run, then deleted. Git history keeps them either way.
+
+Do not add to this directory, and do not fix anything in it -- change the
+experiment's .conf instead. The one reason to reach in here: requeueing tasks
+of a job that was originally submitted from one of these scripts, which still
+works because requeue_failed.sh accepts a script path as well as an
+experiment name.
+
+Equivalence was checked before the move by running every one of these scripts
+with python/sbatch stubbed and comparing the recorded commands against the new
+dispatcher's, for every array index: 2815 training commands, all equivalent,
+and all 2815 experiment names identical under src/naming.py.

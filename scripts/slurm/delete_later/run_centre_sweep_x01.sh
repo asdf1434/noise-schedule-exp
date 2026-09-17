@@ -21,7 +21,7 @@
 # sits at sigma <= 0.0526, against 8.9% on mnist_x10. Half of every k = 0.1 run
 # so far trained against a clipped objective, which is the most likely cause of
 # the FID ~200 plateau on 7 of 9 sampling schedules noted in
-# UPDATE_david_2026-09-03.md.
+# docs/updates/UPDATE_david_2026-09-03.md.
 #
 # So every arm here passes --t_clip 0.005, giving a dead zone at sigma <= 0.00503
 # = 0.05k -- the same position relative to the data that k = 1 has at the

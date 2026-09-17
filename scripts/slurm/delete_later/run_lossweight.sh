@@ -33,7 +33,7 @@
 # quality, that is a real claim about what it is for.
 #
 # It also removes the sigma = 1 anchor that pinned pi near sigma ~ 2 regardless
-# of data scale (see UPDATE_david_2026-09-03.md and run_gridscale.sh), so the
+# of data scale (see docs/updates/UPDATE_david_2026-09-03.md and run_gridscale.sh), so the
 # InfoNoise arms here double as the mechanism test: if InfoNoise can track a
 # data-scale shift at all, its pi should now reach sigma ~ 20 on the x10 arms
 # instead of stalling at 2.3.
