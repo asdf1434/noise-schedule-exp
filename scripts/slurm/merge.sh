@@ -29,7 +29,11 @@
 
 set -e
 
-REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+# Under Slurm, BASH_SOURCE[0] is the node-local copy of the batch script
+# (/var/lib/slurm/slurmd/job*/slurm_script), NOT this file in the repo, so it
+# cannot locate the repo. submit.sh cd's to the repo root before calling
+# sbatch, which is what makes SLURM_SUBMIT_DIR correct here.
+REPO_ROOT=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 cd "$REPO_ROOT"
 
 echo "+ merge_fid_shards.py"

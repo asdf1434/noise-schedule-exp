@@ -78,9 +78,12 @@ echo
 submit() {
     local script=$1 dep=$2
     shift 2
-    local args=(--parsable --export="ALL,EXPERIMENT=$EXPERIMENT")
+    # No --export: --export=ALL,VAR=val makes this cluster attempt user-env
+    # retrieval at launch, which fails and leaves every task held. The
+    # experiment name goes to the script as a positional argument instead.
+    local args=(--parsable)
     [ -n "$dep" ] && args+=(--dependency=afterany:"$dep")
-    args+=("$@" "scripts/slurm/$script")
+    args+=("$@" "scripts/slurm/$script" "$EXPERIMENT")
 
     echo "+ sbatch ${args[*]}" >&2
     if [ "$DRY_RUN" = "1" ]; then

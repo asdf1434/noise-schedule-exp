@@ -79,10 +79,9 @@ if [ -z "$EXPERIMENT" ]; then
     echo "Requeuing: sbatch --array=$FAILED_IDS $SCRIPT"
     sbatch --array="$FAILED_IDS" "$SCRIPT"
 else
-    echo "Requeuing: sbatch --array=$FAILED_IDS --export=ALL,EXPERIMENT=$EXPERIMENT $SCRIPT"
+    echo "Requeuing: sbatch --array=$FAILED_IDS $SCRIPT $EXPERIMENT"
     sbatch --array="$FAILED_IDS" \
-           --export=ALL,EXPERIMENT="$EXPERIMENT" \
            --job-name="${EXPERIMENT}_${STAGE}" \
            --output="logs/slurm/slurm_${EXPERIMENT}_${STAGE}_%A_%a.out" \
-           "$SCRIPT"
+           "$SCRIPT" "$EXPERIMENT"
 fi

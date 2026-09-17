@@ -31,10 +31,22 @@
 
 set -e
 
-REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+# Under Slurm, BASH_SOURCE[0] is the node-local copy of the batch script
+# (/var/lib/slurm/slurmd/job*/slurm_script), NOT this file in the repo, so it
+# cannot locate the repo. submit.sh cd's to the repo root before calling
+# sbatch, which is what makes SLURM_SUBMIT_DIR correct here. The BASH_SOURCE
+# fallback is for running this script directly (e.g. with DRY_RUN=1).
+REPO_ROOT=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 cd "$REPO_ROOT"
 
 source scripts/slurm/lib.sh
+# The experiment name arrives as the first positional argument. It used to be
+# passed as --export=ALL,EXPERIMENT=..., which put every task into
+# user_env_retrieval_failed_requeued_held on this cluster -- Slurm tried to
+# retrieve the user environment at launch, failed, requeued and held the job,
+# so it never ran and never reported an error. The env var still works as a
+# fallback for anything that sets it directly.
+EXPERIMENT=${1:-${EXPERIMENT:-}}
 load_experiment "${EXPERIMENT:?EXPERIMENT is not set -- submit with scripts/slurm/submit.sh <experiment>}"
 
 SHARD=${SLURM_ARRAY_TASK_ID:?SLURM_ARRAY_TASK_ID is not set -- this script runs as a job array}
