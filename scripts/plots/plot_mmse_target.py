@@ -327,6 +327,206 @@ def plot_profiles(profiles, built, out_dir):
     print(f"wrote {path}")
 
 
+# refresh() only updates a bin that collected >= min_bin_count samples in the
+# window; otherwise the bin keeps its previous value (src/infonoise.py:273), and
+# at the very first refresh an unobserved bin is filled by np.interp, which
+# CLAMPS below the data range rather than extrapolating (line 267). So a bin
+# that never collects enough samples is frozen at the lowest observed bin's loss
+# for the whole run. acc_count is not in the profile log, so which bins those
+# are has to be estimated from the sampling density.
+BATCH = 128
+REFRESH_EVERY = 1000
+MIN_BIN_COUNT = 8
+GATE_P = 0.002
+
+
+def measured_mask(sigma: np.ndarray, pi: np.ndarray) -> np.ndarray:
+    """Bins that draw enough samples per refresh window to be updated at all."""
+    d_log = float(np.log(sigma[1]) - np.log(sigma[0]))
+    per_window = pi * d_log * BATCH * REFRESH_EVERY
+    return per_window >= MIN_BIN_COUNT
+
+
+def gate_c_from(r: np.ndarray, centers: np.ndarray, mask: np.ndarray) -> float:
+    """src.infonoise._resolve_gate_c, restricted to ``mask``.
+
+    Reimplemented rather than called because the point of the exercise is to
+    vary which bins are allowed to set the peak, which the method does not
+    expose. The scan itself is identical: normalize by the peak, walk down from
+    the high-noise end, stop at the last bin still above gate_p.
+    """
+    masked = np.where(mask, r, 0.0)
+    peak = float(masked.max())
+    if not np.isfinite(peak) or peak <= 0:
+        return float(centers[0])
+    above = (masked / peak) >= GATE_P
+    idx = len(masked) - 1
+    while idx >= 0 and not above[idx]:
+        idx -= 1
+    return float(centers[idx]) if idx >= 0 else float(centers[0])
+
+
+def plot_measured_bins(profiles, built, out_dir):
+    """p8: the same profile comparison, with the bins the estimator never
+    measures marked instead of drawn as if they were data."""
+    fig, axes = plt.subplots(2, 3, figsize=(17, 9.6))
+    for ax, (cell_name, _, _, _) in zip(axes.ravel(), CELLS):
+        if cell_name not in built:
+            ax.set_axis_off()
+            continue
+        cell, b = profiles[cell_name], built[cell_name]
+        sigma = b["sigma"]
+        m_hat = np.asarray(cell["m_hat"])
+        ok = measured_mask(sigma, np.asarray(cell["pi"]))
+        # unmeasured bins are not always at the bottom: on the k=0.1 arms the
+        # grid runs to sigma_max=80 while the data sits near 0.1, so the whole
+        # top of the grid is never sampled either. Shade every run of them.
+        edges = np.flatnonzero(np.diff(np.concatenate([[False], ~ok, [False]])))
+        for start, stop in zip(edges[::2], edges[1::2]):
+            ax.axvspan(sigma[start], sigma[min(stop, len(sigma) - 1)],
+                       color="#000", alpha=0.07)
+        ax.plot(sigma, sigma**2, color=C_CEIL, lw=1.6, ls=":", label=r"ceiling $\sigma^2$")
+        ax.plot(sigma, b["mmse_gaussian"], color=C_GAUSS, lw=2.4, label="closed-form MMSE")
+        ax.plot(
+            np.where(ok, sigma, np.nan),
+            np.where(ok, m_hat, np.nan),
+            color=C_INFO,
+            lw=2.8,
+            label=r"$\hat{m}$, measured bins",
+        )
+        ax.plot(
+            np.where(~ok, sigma, np.nan),
+            np.where(~ok, m_hat, np.nan),
+            color=C_INFO,
+            lw=2.2,
+            ls="--",
+            alpha=0.55,
+            label=r"$\hat{m}$, never measured (frozen)",
+        )
+
+        r = m_hat / sigma**3
+        c_now = gate_c_from(r, sigma, np.ones_like(ok))
+        c_fix = gate_c_from(r, sigma, ok)
+        c_target = b["gate_c_gaussian"]
+        for value, color, label in (
+            (c_now, C_INFO, "c, all bins"),
+            (c_fix, "#2b6cb0", "c, measured only"),
+            (c_target, C_GAUSS, "c, target"),
+        ):
+            ax.axvline(value, color=color, lw=1.3, ls=":")
+
+        ratio = m_hat[ok] / b["mmse_gaussian"][ok]
+        ax.text(
+            0.015,
+            0.975,
+            f"{int((~ok).sum())} of {len(sigma)} bins never measured; "
+            f"measured range $\\sigma\\in$[{sigma[ok][0]:.2g}, {sigma[ok][-1]:.2g}]\n"
+            f"$\\hat{{m}}$/target on measured bins: {ratio.min():.2f} to {ratio.max():.1f}x\n"
+            f"gate $c$   all bins {c_now:.3g}   measured only {c_fix:.3g}\n"
+            f"           target {c_target:.3g}   "
+            f"(gap {c_target / c_now:.0f}x $\\rightarrow$ {c_target / c_fix:.1f}x)",
+            transform=ax.transAxes,
+            va="top",
+            ha="left",
+            fontsize=8.3,
+            bbox=dict(boxstyle="round,pad=.36", fc="white", ec="#ccc", alpha=0.94),
+        )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlim(sigma[0], sigma[-1])
+        ax.set_ylim(1e-10, max(m_hat.max(), (sigma**2).max()) * 5)
+        ax.set_title(b["title"], fontsize=11.5)
+        ax.grid(alpha=0.2, which="both")
+        ax.set_xlabel(r"noise level  $\sigma$")
+    for row in (0, 1):
+        axes[row, 0].set_ylabel(r"per-pixel denoising error")
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, fontsize=9.5, loc="lower center", ncol=4,
+               bbox_to_anchor=(0.5, 0.105), frameon=False)
+    fig.suptitle(
+        "The same comparison, with the bins the estimator never measures marked",
+        fontsize=13,
+    )
+    fig.text(
+        0.5,
+        0.012,
+        "Shaded: bins drawing fewer than min_bin_count samples per refresh window, so refresh() never updates them. At the first refresh np.interp fills them by CLAMPING to the lowest observed\n"
+        "bin (src/infonoise.py:267), and afterwards they keep that value forever (line 273) -- which is the flat shelf, not a measurement. The gate rule normalizes m_hat/sigma^3 by its peak over the\n"
+        "WHOLE grid, and in four of six cells that peak is bin 0, inside the shaded region. Dotted verticals: the pivot as computed (red), recomputed ignoring frozen bins (blue), and from the target (gold).\n"
+        "Which bins are frozen is estimated from the sampling density, since acc_count is not logged.",
+        ha="center", fontsize=8.3, color="#666",
+    )
+    fig.tight_layout(rect=[0, 0.165, 1, 0.945])
+    path = os.path.join(out_dir, "p8_measured_bins.png")
+    fig.savefig(path, dpi=150)
+    print(f"wrote {path}")
+
+
+def plot_gate_sensitivity(profiles, built, out_dir):
+    """p9: gate pivot as a function of how many bottom bins are excluded.
+
+    Answers "what does including one unmeasured bin actually do" directly: the
+    pivot is a step function of where the peak is allowed to sit, so admitting a
+    single frozen bin at the bottom can move it by an order of magnitude.
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(17, 9))
+    n_max = 48
+    for ax, (cell_name, _, _, _) in zip(axes.ravel(), CELLS):
+        if cell_name not in built:
+            ax.set_axis_off()
+            continue
+        cell, b = profiles[cell_name], built[cell_name]
+        sigma = b["sigma"]
+        r = np.asarray(cell["m_hat"]) / sigma**3
+        ok = measured_mask(sigma, np.asarray(cell["pi"]))
+        n_frozen = int((~ok).sum())
+
+        xs = np.arange(n_max + 1)
+        ys = []
+        for n in xs:
+            mask = np.zeros_like(ok)
+            mask[n:] = True
+            ys.append(gate_c_from(r, sigma, mask))
+        ax.plot(xs, ys, color=C_INFO, lw=2.6, marker="o", ms=3)
+        # closed-form prediction for a FLAT m_hat: r = m_hat/sigma^3 ~ sigma^-3,
+        # so the peak sits on the lowest included bin and r/peak = (s_lo/s)^3,
+        # putting the gate_p crossing at s_lo * gate_p^(-1/3). No data in it.
+        ax.plot(xs, sigma[xs] * GATE_P ** (-1 / 3.0), color="#718096", lw=1.8,
+                ls="-", label=r"prediction for flat $\hat{m}$:  $\sigma_{lo}\,p^{-1/3}$")
+        ax.axhline(b["gate_c_gaussian"], color=C_GAUSS, lw=2.0, ls="--",
+                   label="target $c$ (closed form)")
+        ax.axvline(n_frozen, color="#2b6cb0", lw=1.6, ls=":",
+                   label=f"first measured bin ({n_frozen})")
+        ax.axvspan(0, n_frozen, color="#000", alpha=0.07)
+
+        ax.set_yscale("log")
+        ax.set_xlim(0, n_max)
+        ax.set_title(b["title"], fontsize=11.5)
+        ax.grid(alpha=0.2, which="both")
+        ax.set_xlabel("bottom bins excluded from the peak")
+        ax.legend(fontsize=8.5, loc="lower right")
+    for row in (0, 1):
+        axes[row, 0].set_ylabel(r"resulting gate pivot $c$")
+    fig.suptitle(
+        r"The gate pivot is set by the grid floor, not by the data",
+        fontsize=13,
+    )
+    fig.text(
+        0.5,
+        0.012,
+        "x = how many of the lowest-sigma bins are barred from setting the peak of m_hat/sigma^3; x=0 is what the code does today. Shaded: bins estimated to be frozen rather than measured.\n"
+        "At x=0, which is what the code does today, the pivot sits on the grey line -- and that line contains no data: a flat m_hat makes r = m_hat/sigma^3 monotone decreasing, so the peak always\n"
+        "lands on the lowest included bin, r/peak = (sigma_lo/sigma)^3, and the gate_p crossing falls at sigma_lo * gate_p^(-1/3) = 7.94 * sigma_lo. That is the measured c/sigma_min of 7-14 across\n"
+        "every dataset and scale. The red curve lifts off the grey line only once enough bins are excluded to clear the flat shelf, which is the signature of the shelf being the cause. Note the pivot\n"
+        "slides smoothly rather than jumping at the frozen/measured boundary, so where it happens to cross the target is coincidence, not a fix.",
+        ha="center", fontsize=8.3, color="#666",
+    )
+    fig.tight_layout(rect=[0, 0.105, 1, 0.945])
+    path = os.path.join(out_dir, "p9_gate_sensitivity.png")
+    fig.savefig(path, dpi=150)
+    print(f"wrote {path}")
+
+
 def plot_mmse_definitions(mmse, out_dir):
     """p7: the three closed forms against each other, for the two base datasets.
 
@@ -457,6 +657,8 @@ def main():
     built = build(profiles, mmse)
     plot_densities(profiles, built, args.out_dir)
     plot_profiles(profiles, built, args.out_dir)
+    plot_measured_bins(profiles, built, args.out_dir)
+    plot_gate_sensitivity(profiles, built, args.out_dir)
     plot_mmse_definitions(mmse, args.out_dir)
 
 
