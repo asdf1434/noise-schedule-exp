@@ -159,31 +159,21 @@ def plot_densities(profiles, built, out_dir):
         )
         ax.plot(
             sigma,
-            b["pi_empirical"],
-            color=C_EMP,
-            lw=2.2,
-            ls="--",
-            label="closed-form MMSE, empirical",
-        )
-        ax.plot(
-            sigma,
             b["pi_gaussian"],
             color=C_GAUSS,
             lw=2.2,
             ls="-.",
-            label="closed-form MMSE, Gaussian fit",
+            label="MMSE, Gaussian fit  (the target)",
         )
 
         ax.axvline(tuned, color=C_TUNED, lw=1.1, ls=":")
         med_info = cell["median"]
-        med_emp = median_sigma(sigma, b["pi_empirical"])
         med_gauss = median_sigma(sigma, b["pi_gaussian"])
         ax.text(
             0.02,
             0.97,
             f"median $\\sigma$   swept {tuned:g}\n"
             f"  InfoNoise {med_info:.3g}  ({med_info / tuned:.2f}x)\n"
-            f"  MMSE empirical {med_emp:.3g}  ({med_emp / tuned:.2f}x)\n"
             f"  MMSE Gaussian {med_gauss:.3g}  ({med_gauss / tuned:.2f}x)",
             transform=ax.transAxes,
             va="top",
@@ -208,10 +198,9 @@ def plot_densities(profiles, built, out_dir):
     fig.text(
         0.5,
         0.008,
-        "Both MMSE curves run through the same Eq. 13-15 conversion InfoNoise uses, fed the exact mmse(sigma) instead of the model's estimate.\n"
-        "The empirical variant treats the dataset as N point masses; in several hundred dimensions its MMSE is exactly zero below sigma ~ 1 (the posterior collapses onto the true image),\n"
-        "which pushes all of its mass to the right and makes it useless as a target. The Gaussian variant is the MMSE of a Gaussian fitted to the data's own mean and covariance,\n"
-        "and is the one that stays meaningful at low noise.",
+        "The gold curve is the same Eq. 13-15 conversion InfoNoise runs, fed the closed-form mmse(sigma) instead of the model's estimate -- the schedule InfoNoise would pick if it\n"
+        "measured the profile perfectly. Gap from red to gold is estimator error; gap from gold to blue is error in the target itself. See p7 for why the Gaussian fit is the\n"
+        "closed form used here, and p6 for what goes wrong with the measurement.",
         ha="center",
         fontsize=8.4,
         color="#666",
@@ -236,32 +225,17 @@ def plot_profiles(profiles, built, out_dir):
         ax.plot(sigma, ceiling, color=C_CEIL, lw=1.8, ls=":", label=r"ceiling  $\sigma^2$")
         ax.plot(
             sigma,
-            np.maximum(b["mmse_empirical"], _FLOOR),
-            color=C_EMP,
-            lw=2.3,
-            ls="--",
-            label="closed-form MMSE, empirical",
-        )
-        ax.plot(
-            sigma,
-            b["mmse_holdout"],
-            color=C_HOLD,
-            lw=2.3,
-            ls="-.",
-            label="closed-form MMSE, held-out",
-        )
-        ax.plot(
-            sigma,
             b["mmse_gaussian"],
             color=C_GAUSS,
-            lw=2.3,
-            label="closed-form MMSE, Gaussian fit",
+            lw=2.5,
+            label="closed-form MMSE  (the target)",
         )
         ax.plot(
             sigma, m_hat, color=C_INFO, lw=2.7, label=r"model $\hat{m}$ (InfoNoise)"
         )
 
         ax.axvline(cell["gate_c"], color=C_INFO, lw=1.2, ls=":")
+        ax.axvline(b["gate_c_gaussian"], color=C_GAUSS, lw=1.2, ls=":")
         ax.annotate(
             f"$c$={cell['gate_c']:.2g}",
             xy=(cell["gate_c"], 1e-9),
@@ -273,15 +247,40 @@ def plot_profiles(profiles, built, out_dir):
             va="bottom",
             ha="left",
         )
+        ax.annotate(
+            f"target $c$={b['gate_c_gaussian']:.2g}",
+            xy=(b["gate_c_gaussian"], 1e-9),
+            xytext=(6, 0),
+            textcoords="offset points",
+            fontsize=8,
+            color=C_GAUSS,
+            rotation=90,
+            va="bottom",
+            ha="left",
+        )
 
         over = m_hat / np.maximum(ceiling, 1e-300)
         worst = int(np.argmax(over))
+        # local log-log slope over the lowest decade of the grid. Every valid
+        # answer has slope 2 there (mmse ~ sigma^2 for any continuous p(x));
+        # m_hat goes flat instead, and it is that shape difference -- not the
+        # size of the error -- that moves the gate, since the conversion is
+        # invariant to scaling m_hat by a constant.
+        low = sigma <= sigma[0] * 10
+        log_sigma = np.log(sigma[low])
+        slope_m = float(
+            np.polyfit(log_sigma, np.log(np.maximum(m_hat[low], 1e-300)), 1)[0]
+        )
+        slope_t = float(
+            np.polyfit(log_sigma, np.log(b["mmse_gaussian"][low]), 1)[0]
+        )
         ax.text(
             0.02,
             0.97,
-            f"$\\hat{{m}}$ exceeds the $\\sigma^2$ ceiling by up to {over[worst]:.0f}x\n"
-            f"  (at $\\sigma$={sigma[worst]:.3g})\n"
-            f"gate $c$ sits {cell['gate_c'] / cell['sigma_min']:.1f}x above the grid floor",
+            f"slope over the lowest decade\n"
+            f"   target {slope_t:.2f}    $\\hat{{m}}$ {slope_m:.2f}\n"
+            f"$\\hat{{m}}$ is up to {over[worst]:.0f}x above the $\\sigma^2$ ceiling\n"
+            f"gate $c$ {b['gate_c_gaussian'] / cell['gate_c']:.0f}x below where the target puts it",
             transform=ax.transAxes,
             va="top",
             ha="left",
@@ -303,8 +302,8 @@ def plot_profiles(profiles, built, out_dir):
         labels,
         fontsize=9.5,
         loc="lower center",
-        ncol=2,
-        bbox_to_anchor=(0.5, 0.045),
+        ncol=3,
+        bbox_to_anchor=(0.5, 0.115),
         frameon=False,
     )
     fig.suptitle(
@@ -314,15 +313,124 @@ def plot_profiles(profiles, built, out_dir):
     fig.text(
         0.5,
         0.008,
-        "$\\hat{m}$ is the model's own binned unweighted denoising loss, and is the only input to the schedule. Any estimator obeys mmse$(\\sigma) \\leq \\sigma^2$, since copying the input attains it,\n"
-        "so $\\hat{m}$ above that line is a denoiser doing worse than not denoising at all. $\\hat{m}$ tracks the Gaussian MMSE down to roughly $\\sigma = 10^{-2} k$ and then flattens instead of "
-        "continuing to fall as $\\sigma^2$;\nthat floor is what the gate rule reads as an onset of information, which is why $c$ lands 7-14x above the grid floor in every cell.",
+        "$\\hat{m}$ is the model's own binned unweighted denoising loss, and is the only input to the schedule. It tracks the target down to about $\\sigma = 10^{-2}k$, then flattens instead of\n"
+        "continuing to fall as $\\sigma^2$, ending above the ceiling mmse$(\\sigma) \\leq \\sigma^2$ that copying the input already attains. The schedule is exactly invariant to scaling $\\hat{m}$ by a constant,\n"
+        "so only that change of SHAPE matters: a flat $\\hat{m}$ divided by $\\sigma^3$ blows up at the grid floor, the gate rule reads it as an onset of information, and $c$ (dotted red) lands well\n"
+        "below where the target puts it (dotted gold).",
         ha="center",
         fontsize=8.4,
         color="#666",
     )
-    fig.tight_layout(rect=[0, 0.105, 1, 0.945])
+    fig.tight_layout(rect=[0, 0.175, 1, 0.945])
     path = os.path.join(out_dir, "p6_mmse_vs_mhat.png")
+    fig.savefig(path, dpi=150)
+    print(f"wrote {path}")
+
+
+def plot_mmse_definitions(mmse, out_dir):
+    """p7: the three closed forms against each other, for the two base datasets.
+
+    Separate from p6 because it answers a different question -- not "is the
+    model's estimate right" but "what does mmse(sigma) even mean for a finite
+    dataset, and which of these can serve as a target". Only the base datasets
+    appear: mmse_k(sigma) = k^2 mmse_1(sigma/k) makes every scaled cell the same
+    curve shifted along both axes, so plotting six panels would repeat two.
+    """
+    names = [("mnist", "MNIST"), ("cifar10", "CIFAR-10")]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6.2))
+    for ax, (name, title) in zip(axes, names):
+        if name not in mmse:
+            ax.set_axis_off()
+            continue
+        rec = mmse[name]
+        sigma = np.asarray(rec["sigma"])
+        emp = np.asarray(rec["mmse_empirical"])
+        hold = np.asarray(rec["mmse_holdout"])
+        gauss = np.asarray(rec["mmse_gaussian"])
+
+        ax.plot(sigma, sigma**2, color=C_CEIL, lw=1.8, ls=":", label=r"ceiling  $\sigma^2$")
+        ax.plot(
+            sigma,
+            np.maximum(emp, _FLOOR),
+            color=C_EMP,
+            lw=2.4,
+            ls="--",
+            label=r"$p(x)$ = the $N$ images as point masses",
+        )
+        ax.plot(
+            sigma,
+            hold,
+            color=C_HOLD,
+            lw=2.4,
+            ls="-.",
+            label=r"same, but scoring held-out images",
+        )
+        ax.plot(
+            sigma, gauss, color=C_GAUSS, lw=2.8, label=r"$p(x)$ = Gaussian fit  (the one used)"
+        )
+
+        # where the point-mass posterior stops collapsing onto the true image
+        rising = np.nonzero(emp > 1e-6)[0]
+        if len(rising):
+            ax.axvline(sigma[rising[0]], color=C_EMP, lw=1.1, ls=":")
+            ax.annotate(
+                f"lookup stops being\nperfect: $\\sigma$={sigma[rising[0]]:.2g}",
+                xy=(sigma[rising[0]], 3e-9),
+                xytext=(6, 0),
+                textcoords="offset points",
+                fontsize=8.5,
+                color=C_EMP,
+                va="bottom",
+            )
+
+        ax.text(
+            0.02,
+            0.97,
+            f"held-out floor {hold[0]:.3f} per pixel\n"
+            f"  = mean sq. distance to the nearest\n"
+            f"    training image ({rec['n_support']} of them)\n"
+            f"all three agree above $\\sigma \\approx$ 10, at the pixel variance",
+            transform=ax.transAxes,
+            va="top",
+            ha="left",
+            fontsize=8.6,
+            bbox=dict(boxstyle="round,pad=.38", fc="white", ec="#ccc", alpha=0.93),
+        )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlim(sigma[0], sigma[-1])
+        ax.set_ylim(1e-9, 1e5)
+        ax.set_title(f"{title}   (k = 1;  every other scale is this curve shifted)", fontsize=11.5)
+        ax.grid(alpha=0.2, which="both")
+        ax.set_xlabel(r"noise level  $\sigma$")
+    axes[0].set_ylabel(r"per-pixel MMSE")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        fontsize=9.5,
+        loc="lower center",
+        ncol=4,
+        bbox_to_anchor=(0.5, 0.155),
+        frameon=False,
+    )
+    fig.suptitle(
+        "mmse$(\\sigma)$ computed in closed form, under three choices of what the data distribution is",
+        fontsize=13,
+    )
+    fig.text(
+        0.5,
+        0.012,
+        "All three are exact, not approximations -- they differ only in the assumed $p(x)$. Treating the dataset as $N$ isolated points makes optimal denoising a nearest-neighbour lookup, and a lookup is\n"
+        "perfect until the noise can confuse two different images, so that MMSE is exactly ZERO over most of the range and cannot serve as a target. Scoring held-out images instead removes the collapse but\n"
+        "saturates at the nearest-neighbour distance, which sits above the $\\sigma^2$ ceiling and is therefore a very loose bound. The Gaussian fit is continuous, so it behaves as $\\sigma^2$ at low noise like\n"
+        "real data does; it overestimates the true MMSE, but the schedule is invariant to scaling, so only its shape is used.",
+        ha="center",
+        fontsize=8.4,
+        color="#666",
+    )
+    fig.tight_layout(rect=[0, 0.215, 1, 0.93])
+    path = os.path.join(out_dir, "p7_mmse_definitions.png")
     fig.savefig(path, dpi=150)
     print(f"wrote {path}")
 
@@ -349,6 +457,7 @@ def main():
     built = build(profiles, mmse)
     plot_densities(profiles, built, args.out_dir)
     plot_profiles(profiles, built, args.out_dir)
+    plot_mmse_definitions(mmse, args.out_dir)
 
 
 if __name__ == "__main__":
