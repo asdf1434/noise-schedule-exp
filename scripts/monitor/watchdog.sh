@@ -14,14 +14,14 @@
 #
 # Usage:
 #   scripts/monitor/watchdog.sh <exp> [<exp> ...]
+#   WATCHDOG_ONCE=1 scripts/monitor/watchdog.sh exp1          # one pass, preferred
 #   WATCHDOG_INTERVAL=300 WATCHDOG_MAX_RETRIES=2 scripts/monitor/watchdog.sh exp1
 #   WATCHDOG_DRY_RUN=1 scripts/monitor/watchdog.sh exp1      # print, submit nothing
 #
-# Run it detached from a login node:
-#   cd <repo> && setsid nohup scripts/monitor/watchdog.sh a b c \
-#       > logs/watchdog/run.log 2>&1 < /dev/null &
-#
-# Exits once every watched experiment has no train task left queued or running.
+# Prefer WATCHDOG_ONCE=1 on demand over leaving this looping on a login node --
+# the recurring cost of an unattended failure is low once the --exclude list is
+# right, and a single pass recovers whatever accumulated since the last check.
+# Without ONCE it loops and exits when nothing is queued or running.
 # ==========================================
 
 set -u
@@ -31,6 +31,9 @@ MAX_RETRIES=${WATCHDOG_MAX_RETRIES:-2}
 # a node this many failures deep is treated as broken, not unlucky
 NODE_STRIKES=${WATCHDOG_NODE_STRIKES:-3}
 DRY_RUN=${WATCHDOG_DRY_RUN:-0}
+# One pass and exit, rather than looping. Preferred over leaving this running on
+# a login node: run it whenever you check on an experiment.
+ONCE=${WATCHDOG_ONCE:-0}
 
 [ "$#" -ge 1 ] || { echo "usage: $0 <experiment> [<experiment> ...]" >&2; exit 1; }
 
@@ -129,6 +132,10 @@ while :; do
         still_active=1
     done
 
+    if [ "$ONCE" = "1" ]; then
+        log "single pass done -- exiting"
+        break
+    fi
     if [ "$still_active" -eq 0 ]; then
         log "no train tasks left queued or running -- exiting"
         break
