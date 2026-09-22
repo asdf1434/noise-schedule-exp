@@ -381,28 +381,15 @@ def plot_mmse_definitions(mmse, out_dir):
         if len(rising):
             ax.axvline(sigma[rising[0]], color=C_EMP, lw=1.1, ls=":")
             ax.annotate(
-                f"lookup stops being\nperfect: $\\sigma$={sigma[rising[0]]:.2g}",
+                f"zero below $\\sigma$={sigma[rising[0]]:.2g}",
                 xy=(sigma[rising[0]], 3e-9),
                 xytext=(6, 0),
                 textcoords="offset points",
-                fontsize=8.5,
+                fontsize=10,
                 color=C_EMP,
                 va="bottom",
             )
 
-        ax.text(
-            0.02,
-            0.97,
-            f"held-out floor {hold[0]:.3f} per pixel\n"
-            f"  = mean sq. distance to the nearest\n"
-            f"    training image ({rec['n_support']} of them)\n"
-            f"all three agree above $\\sigma \\approx$ 10, at the pixel variance",
-            transform=ax.transAxes,
-            va="top",
-            ha="left",
-            fontsize=8.6,
-            bbox=dict(boxstyle="round,pad=.38", fc="white", ec="#ccc", alpha=0.93),
-        )
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xlim(sigma[0], sigma[-1])
@@ -418,7 +405,7 @@ def plot_mmse_definitions(mmse, out_dir):
         fontsize=9.5,
         loc="lower center",
         ncol=4,
-        bbox_to_anchor=(0.5, 0.155),
+        bbox_to_anchor=(0.5, 0.10),
         frameon=False,
     )
     fig.suptitle(
@@ -428,15 +415,12 @@ def plot_mmse_definitions(mmse, out_dir):
     fig.text(
         0.5,
         0.012,
-        "All three are exact, not approximations -- they differ only in the assumed $p(x)$. Treating the dataset as $N$ isolated points makes optimal denoising a nearest-neighbour lookup, and a lookup is\n"
-        "perfect until the noise can confuse two different images, so that MMSE is exactly ZERO over most of the range and cannot serve as a target. Scoring held-out images instead removes the collapse but\n"
-        "saturates at the nearest-neighbour distance, which sits above the $\\sigma^2$ ceiling and is therefore a very loose bound. The Gaussian fit is continuous, so it behaves as $\\sigma^2$ at low noise like\n"
-        "real data does; it overestimates the true MMSE, but the schedule is invariant to scaling, so only its shape is used.",
+        "All three are exact. They differ only in the assumed $p(x)$: point masses make optimal denoising a nearest-neighbour lookup, which is perfect until the noise can confuse two images.",
         ha="center",
         fontsize=8.4,
         color="#666",
     )
-    fig.tight_layout(rect=[0, 0.215, 1, 0.93])
+    fig.tight_layout(rect=[0, 0.16, 1, 0.93])
     path = os.path.join(out_dir, "p7_mmse_definitions.png")
     fig.savefig(path, dpi=150)
     print(f"wrote {path}")
