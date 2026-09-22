@@ -46,7 +46,8 @@ touch "$RETRIES" "$BAD_NODES"
 START=$(date +%Y-%m-%dT%H:%M:%S)
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
-log "watching: $*"
+EXPERIMENTS=("$@")
+log "watching: ${EXPERIMENTS[*]}"
 log "interval ${INTERVAL}s, max ${MAX_RETRIES} retries/task, node strike-out at ${NODE_STRIKES}"
 [ "$DRY_RUN" = "1" ] && log "DRY RUN -- nothing will be submitted"
 
@@ -69,7 +70,7 @@ retries_for() {   # <exp> <task>
 while :; do
     still_active=0
 
-    for exp in "$@"; do
+    for exp in "${EXPERIMENTS[@]}"; do
         # every generation of this experiment's train job, including requeues
         mapfile -t rows < <(
             sacct -X -S "$START" -n -o JobID,JobName%40,State,NodeList%30 \
@@ -80,10 +81,11 @@ while :; do
         [ "$active" -gt 0 ] && still_active=1
 
         # count failures per node, so a genuinely broken node earns its way out
-        for row in "${rows[@]}"; do
-            set -- $row
-            [ "${2:-}" = "FAILED" ] || continue
-            echo "${3:-unknown}"
+        for row in "${rows[@]:-}"; do
+            [ -n "$row" ] || continue
+            read -r _jobid _state _node <<< "$row"
+            [ "$_state" = "FAILED" ] || continue
+            echo "${_node:-unknown}"
         done | sort | uniq -c | while read -r count node; do
             [ "$count" -ge "$NODE_STRIKES" ] || continue
             [ "$node" = "unknown" ] || [ -z "$node" ] && continue
@@ -94,10 +96,11 @@ while :; do
 
         # collect failed task ids not already requeued to the cap
         to_requeue=()
-        for row in "${rows[@]}"; do
-            set -- $row
-            [ "${2:-}" = "FAILED" ] || continue
-            task=${1##*_}
+        for row in "${rows[@]:-}"; do
+            [ -n "$row" ] || continue
+            read -r _jobid _state _node <<< "$row"
+            [ "$_state" = "FAILED" ] || continue
+            task=${_jobid##*_}
             case "$task" in ''|*[!0-9]*) continue ;; esac
             n=$(retries_for "$exp" "$task")
             [ "$n" -ge "$MAX_RETRIES" ] && continue
@@ -107,6 +110,7 @@ while :; do
             to_requeue+=("$task")
         done
 
+        [ "${#to_requeue[@]}" -eq 0 ] && continue 2>/dev/null || true
         [ "${#to_requeue[@]}" -eq 0 ] && continue
 
         list=$(printf '%s\n' "${to_requeue[@]}" | sort -un | paste -sd, -)
