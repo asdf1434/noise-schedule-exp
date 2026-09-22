@@ -56,6 +56,7 @@ def make_step(
     cond_params: tuple = (),
     loss_weighting: str = "vpred",
     t_clip: float = 0.05,
+    sigma_data: float = 0.5,
 ) -> tuple[eqx.Module, optax.OptState, Float[Array, ""], Float[Array, " batch"]]:
     """
     single batch
@@ -80,6 +81,7 @@ def make_step(
         cond_params,
         loss_weighting,
         t_clip,
+        sigma_data,
     )
     (loss, unweighted), grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model)
 
@@ -102,6 +104,7 @@ def export_evaluation_images(
     cond_params: tuple = (),
     sample_scale: float = 1.0,
     t_clip: float = 0.05,
+    sigma_data: Optional[float] = None,
 ):
     """
     generate and save samples for different inference schedules
@@ -163,6 +166,7 @@ def export_evaluation_images(
                     eval_batch_size,
                     image_shape,
                     t_clip=t_clip,
+                    sigma_data=sigma_data,
                 )
             else:
                 batch_samples = sample_batch_cond(
@@ -176,6 +180,7 @@ def export_evaluation_images(
                     image_shape=image_shape,
                     cond_params=cond_params,
                     t_clip=t_clip,
+                    sigma_data=sigma_data,
                 )
             all_samples.append(np.array(batch_samples))
 
@@ -205,8 +210,11 @@ def main():
     # support this jaxlib build) instead of silently training on CPU for
     # the full run. Nonzero exit lets Slurm mark the task failed so it can
     # be resubmitted and land on a working node.
+    # ALLOW_CPU=1 is for smoke-testing the pipeline on a laptop (a few steps at
+    # a tiny width). Never set it in a Slurm script -- the guard exists because
+    # a full run silently on CPU wastes the whole walltime.
     gpu_devices = [d for d in jax.devices() if d.platform == "gpu"]
-    if not gpu_devices:
+    if not gpu_devices and os.environ.get("ALLOW_CPU") != "1":
         print(
             f"ERROR: no GPU visible to JAX (jax.devices()={jax.devices()}). "
             "Refusing to train on CPU -- exiting so this task can be resubmitted "
@@ -265,6 +273,17 @@ def main():
         "to the experiment name when non-default.",
     )
     parser.add_argument(
+        "--sigma_data",
+        type=float,
+        default=0.5,
+        help="EDM preconditioning data scale, used only with "
+        "--loss_weighting edm (Appendix C.2 fixes it at 0.5). Deliberately NOT "
+        "scaled per dataset: with sigma_data = 0.5*k every coefficient rescales "
+        "so that training at k=10 is a relabelled copy of k=1, which would make "
+        "the data-scale axis measure nothing. Scaling it is useful only as a "
+        "correctness control, where k=1 and k=10 must then agree exactly.",
+    )
+    parser.add_argument(
         "--t_clip",
         type=float,
         default=0.05,
@@ -321,6 +340,13 @@ def main():
     # 28x28 -- this is what lets a 64x64 dataset (e.g. eurosat64) train/sample.
     image_shape = (ds_spec.channels, ds_spec.image_size, ds_spec.image_size)
 
+    if args.loss_weighting == "edm" and args.t_clip != 0.05:
+        parser.error(
+            "--t_clip has no effect with --loss_weighting edm: preconditioning "
+            "removes the dead zone it exists to bound (the network target is "
+            "finite at sigma -> 0). Drop --t_clip."
+        )
+
     exp_name = make_exp_name(
         args.dataset,
         args.conditioning,
@@ -330,6 +356,7 @@ def main():
         cond_params=cond_kwargs,
         loss_weighting=args.loss_weighting,
         t_clip=args.t_clip,
+        sigma_data=args.sigma_data,
     )
 
     os.makedirs(os.path.join("logs", "metrics", exp_name), exist_ok=True)
@@ -433,6 +460,7 @@ def main():
             ),
             loss_weighting=args.loss_weighting,
             t_clip=args.t_clip,
+            sigma_data=args.sigma_data,
             **info_kwargs,
         )
         train_dist_fn = infonoise.sample_t
@@ -484,6 +512,7 @@ def main():
                 cond_items,
                 args.loss_weighting,
                 args.t_clip,
+                args.sigma_data,
             )
             epoch_loss += loss
 
@@ -518,6 +547,7 @@ def main():
                 cond_items,
                 ds_spec.sample_scale,
                 args.t_clip,
+                args.sigma_data if args.loss_weighting == "edm" else None,
             )
 
             # save metrics and checkpoint

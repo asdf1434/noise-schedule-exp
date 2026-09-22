@@ -6,6 +6,13 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, Int
 
 from src.conditioning import build_cond_channels
+from src.precond import (
+    DEFAULT_SIGMA_DATA,
+    coefficients,
+    loss_weight_edm,
+    network_target,
+    sigma_of_t,
+)
 
 # Default floor on (1 - t) in the x-prediction loss weight 1/max(t_clip, 1-t)^2,
 # which would otherwise diverge as t -> 1. src/infonoise.py imports this so its
@@ -35,18 +42,29 @@ T_CLIP = 0.05
 # useful sigma range and so dominates where training effort lands whatever pi
 # does; with "uniform" the training distribution IS the allocation. Anything
 # comparing training distributions on FID has to hold this fixed.
-LOSS_WEIGHTINGS = ("vpred", "uniform")
+#   "edm"     EDM preconditioning (Appendix C.2) with its paired weight
+#             w = 1/c_out(sigma)^2. The two are one package, not two knobs: the
+#             weight exists precisely to cancel c_out, leaving plain MSE on the
+#             network's own output. Selecting it turns preconditioning on, which
+#             is why there is no separate --precond flag. Sets no dead zone, so
+#             t_clip is unused and must be left at its default.
+LOSS_WEIGHTINGS = ("vpred", "uniform", "edm")
 DEFAULT_LOSS_WEIGHTING = "vpred"
 
 
 def weight_of_t(
-    t, loss_weighting: str = DEFAULT_LOSS_WEIGHTING, t_clip: float = T_CLIP
+    t,
+    loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
+    t_clip: float = T_CLIP,
+    sigma_data: float = DEFAULT_SIGMA_DATA,
 ):
     """Per-sample loss weight for the given weighting, in t coordinates."""
     if loss_weighting == "uniform":
         return jnp.ones_like(t)
     if loss_weighting == "vpred":
         return 1.0 / jnp.maximum(t_clip, 1 - t) ** 2
+    if loss_weighting == "edm":
+        return loss_weight_edm(sigma_of_t(t), sigma_data)
     raise ValueError(
         f"unknown loss_weighting {loss_weighting!r}; expected one of {LOSS_WEIGHTINGS}"
     )
@@ -84,6 +102,7 @@ def compute_loss_cond(
     cond_params=(),
     loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
     t_clip: float = T_CLIP,
+    sigma_data: float = DEFAULT_SIGMA_DATA,
 ) -> tuple[Float[Array, ""], Float[Array, " b"]]:
     """
     same x-pred loss as in compute_loss_x above
@@ -95,8 +114,32 @@ def compute_loss_cond(
     Returns (weighted scalar loss used for the gradient, per-sample unweighted
     squared error used only as an InfoNoise profile statistic).
     """
-    z = t * clean_images + (1 - t) * noise
     extra = build_cond_channels(conditioning, clean_images, cond_params)
+
+    if loss_weighting == "edm":
+        # Appendix C.2. Multiplying w = 1/c_out^2 through ||D - x0||^2 cancels
+        # c_out exactly, so the objective is plain MSE on the network's own
+        # output and no weight or dead zone appears. See src/precond.py.
+        z = t * clean_images + (1 - t) * noise
+        model_input, target, c_noise = network_target(
+            clean_images, z, t, sigma_data
+        )
+        if extra is not None:
+            model_input = jnp.concatenate([model_input, extra], axis=1)
+        flat_noise = c_noise.reshape(-1)
+        if labels is not None:
+            f = jax.vmap(model)(model_input, flat_noise, labels)
+        else:
+            f = jax.vmap(model)(model_input, flat_noise)
+        weighted = jnp.mean((f - target) ** 2)
+        # InfoNoise bins the unweighted error in X space, not in the network's
+        # rescaled output space, so it has to be converted back: D - x0 equals
+        # c_out * (f - target).
+        _, c_out, _, _ = coefficients(sigma_of_t(t), sigma_data)
+        unweighted = jnp.mean((c_out * (f - target)) ** 2, axis=(1, 2, 3))
+        return weighted, unweighted
+
+    z = t * clean_images + (1 - t) * noise
     model_input = z if extra is None else jnp.concatenate([z, extra], axis=1)
 
     if labels is not None:

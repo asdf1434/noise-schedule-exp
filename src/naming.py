@@ -28,6 +28,7 @@ def make_exp_name(
     cond_params: Optional[dict] = None,
     loss_weighting: str = "vpred",
     t_clip: float = 0.05,
+    sigma_data: float = 0.5,
 ) -> str:
     """``cond_params`` extends the conditioning token exactly as ``dist_params``
     extends the distribution token. It has to: conditioning settings used to be
@@ -48,6 +49,12 @@ def make_exp_name(
     # different floors must not share a name. Appended only when non-default.
     if float(t_clip) != 0.05:
         dist_token += f"_tclip_{t_clip}"
+    # Only meaningful under loss_weighting="edm", where it sets the
+    # preconditioning coefficients. Appended when non-default so the
+    # scale-covariance control (sigma_data scaled with the data) cannot collide
+    # with the paper's fixed 0.5.
+    if loss_weighting == "edm" and float(sigma_data) != 0.5:
+        dist_token += f"_sdata_{sigma_data}"
     cond_token = f"{conditioning}" + "".join(
         f"_{k}_{v}" for k, v in sorted((cond_params or {}).items())
     )

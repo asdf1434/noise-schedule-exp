@@ -10,6 +10,7 @@ from PIL import Image
 
 from src.conditioning import build_cond_channels, inject_known
 from src.loss import T_CLIP
+from src.precond import denoise
 
 # Dataset loading lives in src/datasets.py now (registry + per-dataset loaders);
 # re-exported here so existing `from src.utils import get_dataloaders` callers
@@ -37,6 +38,7 @@ def sample_batch_x(
     batch_size: int,
     image_shape: tuple = (1, 28, 28),
     t_clip: float = T_CLIP,
+    sigma_data: Optional[float] = None,
 ) -> Float[Array, "batch c h w"]:
     """
     sample from model by predicting x
@@ -55,8 +57,15 @@ def sample_batch_x(
         t, t_next = ts[0], ts[1]
         t_batched = jnp.full(batch_size, t)
 
-        # predict clean data
-        x_pred = jax.vmap(model)(z, t_batched)
+        # predict clean data. ``sigma_data`` set means the model was trained
+        # with EDM preconditioning, so the x-prediction is D(z, t) rather than
+        # the raw network output -- see src/precond.py.
+        if sigma_data is None:
+            x_pred = jax.vmap(model)(z, t_batched)
+        else:
+            x_pred = denoise(
+                model, z, jnp.full((batch_size, 1, 1, 1), t), sigma_data
+            )
 
         # calculate velocity
         v = (x_pred - z) / jnp.maximum(1 - t, t_clip)
@@ -81,6 +90,7 @@ def sample_batch_cond(
     image_shape: tuple = (1, 28, 28),
     cond_params=(),
     t_clip: float = T_CLIP,
+    sigma_data: Optional[float] = None,
 ) -> Float[Array, "batch c h w"]:
     """
     same as sample_batch_x except it understands conditioning
@@ -128,7 +138,16 @@ def sample_batch_cond(
 
         model_input = z if extra is None else jnp.concatenate([z, extra], axis=1)
 
-        if labels is not None:
+        if sigma_data is not None:
+            x_pred = denoise(
+                model,
+                z,
+                jnp.full((batch_size, 1, 1, 1), t),
+                sigma_data,
+                extra=extra,
+                labels=labels,
+            )
+        elif labels is not None:
             x_pred = jax.vmap(model)(model_input, t_batched, labels)
         else:
             x_pred = jax.vmap(model)(model_input, t_batched)

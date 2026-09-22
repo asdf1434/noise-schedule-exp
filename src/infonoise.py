@@ -53,6 +53,7 @@ import numpy as np
 from jaxtyping import Array, Float, PRNGKeyArray
 
 from src.loss import DEFAULT_LOSS_WEIGHTING, T_CLIP
+from src.precond import DEFAULT_SIGMA_DATA, loss_weight_edm
 
 
 def sigma_of_t(t: np.ndarray) -> np.ndarray:
@@ -68,6 +69,7 @@ def loss_weight_of_sigma(
     sigma: np.ndarray,
     loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
     t_clip: float = T_CLIP,
+    sigma_data: float = DEFAULT_SIGMA_DATA,
 ) -> np.ndarray:
     """w(sigma): the objective's fixed loss weight, in sigma coords.
 
@@ -78,6 +80,10 @@ def loss_weight_of_sigma(
     """
     if loss_weighting == "uniform":
         return np.ones_like(np.asarray(sigma, dtype=float))
+    if loss_weighting == "edm":
+        return np.asarray(
+            loss_weight_edm(np.asarray(sigma, dtype=float), sigma_data), dtype=float
+        )
     if loss_weighting == "vpred":
         one_minus_t = sigma / (1.0 + sigma)
         return 1.0 / np.maximum(t_clip, one_minus_t) ** 2
@@ -133,6 +139,7 @@ class InfoNoiseSampler:
         gate_p: float = 0.002,
         loss_weighting: str = DEFAULT_LOSS_WEIGHTING,
         t_clip: float = T_CLIP,
+        sigma_data: float = DEFAULT_SIGMA_DATA,
         log_path: Optional[str] = None,
     ):
         if sigma_min <= 0 or sigma_max <= sigma_min:
@@ -152,6 +159,7 @@ class InfoNoiseSampler:
         self.gate_p = float(gate_p)
         self.loss_weighting = str(loss_weighting)
         self.t_clip = float(t_clip)
+        self.sigma_data = float(sigma_data)
         self.log_path = log_path
 
         # fixed grid, uniform in log sigma (the paper bins losses in log sigma)
@@ -164,7 +172,7 @@ class InfoNoiseSampler:
 
         # w is fixed by the objective, so it can be precomputed once
         self.weights = loss_weight_of_sigma(
-            self.centers, self.loss_weighting, self.t_clip
+            self.centers, self.loss_weighting, self.t_clip, self.sigma_data
         )
 
         # m_hat(u) === 1 at init (Algorithm 1, line 1); replaced wholesale at the
