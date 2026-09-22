@@ -337,6 +337,69 @@ def plot_measured_bins(profiles, built, out_dir):
     print(f"wrote {path}")
 
 
+def plot_schedules_from_mmse(profiles, built, out_dir):
+    """p11: what the two curves in p7 produce once they are schedules.
+
+    Same two panels and the same two colours as p7, so the pair reads as
+    input -> output. Both go through allocation_from_m_hat, the function
+    training itself calls, so the only difference between them is the mmse
+    curve fed in. The swept optimum is the yardstick.
+    """
+    cells = [("mnist", "MNIST   (k = 1)"), ("cifar10", "CIFAR-10   (k = 1)")]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    for ax, (cell_name, title) in zip(axes, cells):
+        if cell_name not in built:
+            ax.set_axis_off()
+            continue
+        cell, b = profiles[cell_name], built[cell_name]
+        sigma = b["sigma"]
+        tuned = cell["tuned_sigma"]
+        grid = np.logspace(np.log10(tuned / 500), np.log10(tuned * 500), 900)
+        swept = logit_normal_density(grid, tuned)
+
+        ax.plot(grid, swept, color=C_TUNED, lw=2.6,
+                label=f"best swept centre  ($\\sigma$={tuned:g})")
+        ax.fill_between(grid, 0, swept, color=C_TUNED, alpha=0.13)
+        ax.plot(sigma, b["pi_gaussian"], color=C_GAUSS, lw=2.6,
+                label="from the Gaussian-fit MMSE")
+        ax.plot(sigma, b["pi_empirical"], color=C_EMP, lw=2.4, ls="--",
+                label="from the B.4 exact MMSE")
+        ax.axvline(tuned, color=C_TUNED, lw=1.1, ls=":")
+
+        med_g = median_sigma(sigma, b["pi_gaussian"])
+        med_e = median_sigma(sigma, b["pi_empirical"])
+        ax.text(
+            0.02, 0.97,
+            f"median $\\sigma$\n"
+            f"  swept {tuned:g}\n"
+            f"  Gaussian {med_g:.3g}   ({med_g / tuned:.2f}x)\n"
+            f"  B.4 {med_e:.3g}   ({med_e / tuned:.0f}x)",
+            transform=ax.transAxes, va="top", ha="left", fontsize=10,
+            bbox=dict(boxstyle="round,pad=.4", fc="white", ec="#ccc", alpha=0.94),
+        )
+        ax.set_xscale("log")
+        ax.set_xlim(grid[0], grid[-1])
+        ax.set_ylim(0, 0.62)
+        ax.set_title(title, fontsize=12)
+        ax.grid(alpha=0.2, which="both")
+        ax.set_xlabel(r"noise level  $\sigma$")
+    axes[0].set_ylabel(r"training density (per unit $\log\sigma$)")
+    axes[0].legend(fontsize=9.5, loc="center left")
+    fig.suptitle(
+        "The same two MMSE curves, pushed through Eq. 13-15 into training schedules",
+        fontsize=13,
+    )
+    fig.text(
+        0.5, 0.015,
+        "Both run through the function training itself calls, so the only difference is the mmse curve fed in. B.4 is exact but zero below sigma~0.5, which pushes its whole schedule past the optimum.",
+        ha="center", fontsize=9, color="#666",
+    )
+    fig.tight_layout(rect=[0, 0.055, 1, 0.93])
+    path = os.path.join(out_dir, "p11_schedules_from_mmse.png")
+    fig.savefig(path, dpi=150)
+    print(f"wrote {path}")
+
+
 def plot_mmse_definitions(mmse, out_dir):
     """p7: the three closed forms against each other, for the two base datasets.
 
@@ -442,6 +505,7 @@ def main():
     built = build(profiles, mmse)
     plot_densities(profiles, built, args.out_dir)
     plot_measured_bins(profiles, built, args.out_dir)
+    plot_schedules_from_mmse(profiles, built, args.out_dir)
     plot_mmse_definitions(mmse, args.out_dir)
 
 
