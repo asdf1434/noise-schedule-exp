@@ -64,7 +64,7 @@ exclude_list() {
 }
 
 retries_for() {   # <exp> <task>
-    grep -c "^$1 $2\$" "$RETRIES" 2>/dev/null || echo 0
+    grep -c "^$1 $2\$" "$RETRIES" 2>/dev/null | head -1
 }
 
 while :; do
@@ -110,7 +110,6 @@ while :; do
             to_requeue+=("$task")
         done
 
-        [ "${#to_requeue[@]}" -eq 0 ] && continue 2>/dev/null || true
         [ "${#to_requeue[@]}" -eq 0 ] && continue
 
         list=$(printf '%s\n' "${to_requeue[@]}" | sort -un | paste -sd, -)
