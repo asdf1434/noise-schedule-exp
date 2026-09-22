@@ -15,6 +15,7 @@
 # Usage:
 #   scripts/monitor/watchdog.sh <exp> [<exp> ...]
 #   WATCHDOG_ONCE=1 scripts/monitor/watchdog.sh exp1          # one pass, preferred
+#   WATCHDOG_SINCE=now-3days WATCHDOG_ONCE=1 scripts/monitor/watchdog.sh exp1
 #   WATCHDOG_INTERVAL=300 WATCHDOG_MAX_RETRIES=2 scripts/monitor/watchdog.sh exp1
 #   WATCHDOG_DRY_RUN=1 scripts/monitor/watchdog.sh exp1      # print, submit nothing
 #
@@ -46,7 +47,17 @@ RETRIES=$STATE_DIR/retries.txt        # "<exp> <task>" once per requeue
 BAD_NODES=$STATE_DIR/bad_nodes.txt    # one node name per line, accumulated
 touch "$RETRIES" "$BAD_NODES"
 
-START=$(date +%Y-%m-%dT%H:%M:%S)
+# How far back to look for failures. Defaults to launch time when looping (the
+# daemon sees everything that happens while it runs), but a single pass has to
+# look backwards or it sees nothing -- which silently recovered zero of 91
+# failed tasks the first time WATCHDOG_ONCE was used.
+if [ -n "${WATCHDOG_SINCE:-}" ]; then
+    START=$WATCHDOG_SINCE
+elif [ "$ONCE" = "1" ]; then
+    START=now-24hours
+else
+    START=$(date +%Y-%m-%dT%H:%M:%S)
+fi
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
 EXPERIMENTS=("$@")
