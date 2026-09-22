@@ -15,8 +15,11 @@ Produces two figures, one panel per (dataset x scale) cell:
       rather than drawn as data -- without that split the error looks 10x worse
       than it is.
 
-  p7_mmse_definitions.png -- the three closed forms against each other, showing
-      why the literal "MMSE over the dataset" cannot be the target.
+  p7_mmse_definitions.png -- the literal "MMSE over the dataset" against the
+      Gaussian-fit one actually used, showing why the first cannot be the target.
+      (A third variant, scoring held-out targets, is computed but not plotted:
+      it saturates at the nearest-neighbour distance and so is a generalization
+      error rather than any distribution's MMSE.)
 
 Inputs:
   results/closed_form_mmse/{mnist,cifar10}.json  (scripts/analysis/closed_form_mmse.py)
@@ -352,7 +355,6 @@ def plot_mmse_definitions(mmse, out_dir):
         rec = mmse[name]
         sigma = np.asarray(rec["sigma"])
         emp = np.asarray(rec["mmse_empirical"])
-        hold = np.asarray(rec["mmse_holdout"])
         gauss = np.asarray(rec["mmse_gaussian"])
 
         ax.plot(sigma, sigma**2, color=C_CEIL, lw=1.8, ls=":", label=r"ceiling  $\sigma^2$")
@@ -363,14 +365,6 @@ def plot_mmse_definitions(mmse, out_dir):
             lw=2.4,
             ls="--",
             label=r"$p(x)$ = the $N$ images as point masses",
-        )
-        ax.plot(
-            sigma,
-            hold,
-            color=C_HOLD,
-            lw=2.4,
-            ls="-.",
-            label=r"same, but scoring held-out images",
         )
         ax.plot(
             sigma, gauss, color=C_GAUSS, lw=2.8, label=r"$p(x)$ = Gaussian fit  (the one used)"
@@ -404,18 +398,18 @@ def plot_mmse_definitions(mmse, out_dir):
         labels,
         fontsize=9.5,
         loc="lower center",
-        ncol=4,
+        ncol=3,
         bbox_to_anchor=(0.5, 0.10),
         frameon=False,
     )
     fig.suptitle(
-        "mmse$(\\sigma)$ computed in closed form, under three choices of what the data distribution is",
+        "mmse$(\\sigma)$ computed in closed form, under two choices of what the data distribution is",
         fontsize=13,
     )
     fig.text(
         0.5,
         0.012,
-        "All three are exact. They differ only in the assumed $p(x)$: point masses make optimal denoising a nearest-neighbour lookup, which is perfect until the noise can confuse two images.",
+        "Both are exact. They differ only in the assumed $p(x)$: point masses make optimal denoising a nearest-neighbour lookup, which is perfect until the noise can confuse two images.",
         ha="center",
         fontsize=8.4,
         color="#666",
