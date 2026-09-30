@@ -79,6 +79,7 @@ def sample_batch_x(
     return z
 
 
+@eqx.filter_jit
 def sample_batch_cond(
     model: eqx.Module,
     key: PRNGKeyArray,
