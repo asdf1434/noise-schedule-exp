@@ -11,8 +11,8 @@ where rho* is largest.
         --checkpoint checkpoints/ds-mnist__cond-none__dist-gt_target_sigma_min_0.002_sigma_max_80.0__seed-0_epoch_100.eqx \
         --dataset mnist
 
-Writes plots/trajectory_<dataset>_strip.png (x_t and x0_hat for a few images
-at a few noise levels) and plots/trajectory_<dataset>_speed.png (rho* and the
+Writes plots/sept30/trajectory_<dataset>_strip.png (x_t and x0_hat for a few images
+at a few noise levels) and plots/sept30/trajectory_<dataset>_speed.png (rho* and the
 speed on a shared lambda axis).
 """
 
@@ -44,6 +44,7 @@ p.add_argument("--n_levels", type=int, default=121)
 p.add_argument("--strip_images", type=int, default=4)
 p.add_argument("--strip_levels", type=int, default=10)
 p.add_argument("--seed", type=int, default=0)
+p.add_argument("--out_dir", default="plots/sept30")
 args = p.parse_args()
 
 spec = DATASETS[args.dataset]
@@ -80,7 +81,7 @@ lam_mid = 0.5 * (lam[1:] + lam[:-1])
 
 with open(f"results/q_target/{args.dataset}.json") as f:
     target = json.load(f)
-os.makedirs("plots", exist_ok=True)
+os.makedirs(args.out_dir, exist_ok=True)
 
 # rho* and speed, stacked on a shared lambda axis
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5.5), sharex=True, constrained_layout=True)
@@ -96,7 +97,7 @@ ax2.set_xlabel("λ = −2 log σ")
 ax2.legend(fontsize=8)
 ax2.grid(alpha=0.3)
 ax2.set_xlim(lam.min(), lam.max())
-fig.savefig(f"plots/trajectory_{args.dataset}_speed.png", dpi=150)
+fig.savefig(os.path.join(args.out_dir, f"trajectory_{args.dataset}_speed.png"), dpi=150)
 
 # image strip: for each image, a row of x_t and a row of x0_hat
 cols = np.linspace(0, args.n_levels - 1, args.strip_levels).round().astype(int)
@@ -118,8 +119,8 @@ for i in range(args.strip_images):
             top.set_ylabel("x_t", fontsize=8)
             bottom.set_ylabel("x̂₀", fontsize=8)
 fig.suptitle(f"{args.dataset}: model input x_t and output x̂₀ as noise decreases (left to right)", fontsize=10)
-fig.savefig(f"plots/trajectory_{args.dataset}_strip.png", dpi=150, bbox_inches="tight")
+fig.savefig(os.path.join(args.out_dir, f"trajectory_{args.dataset}_strip.png"), dpi=150, bbox_inches="tight")
 mean_speed = np.convolve(speed.mean(axis=1), np.ones(5) / 5, mode="same")
 target_peak = target["lambda"][int(np.argmax(target["q_lambda"]))]
 print(f"rho* peak at lambda {target_peak:.2f}; mean speed (5-point smoothed) peaks at lambda {lam_mid[np.argmax(mean_speed)]:.2f}")
-print(f"wrote plots/trajectory_{args.dataset}_speed.png and plots/trajectory_{args.dataset}_strip.png")
+print(f"wrote {args.out_dir}/trajectory_{args.dataset}_{{speed,strip}}.png")

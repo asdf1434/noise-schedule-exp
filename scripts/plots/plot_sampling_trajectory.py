@@ -10,7 +10,7 @@ sample.
         --gt checkpoints/<gt run>_epoch_100.eqx --gt_t_clip 0.05 \
         --default checkpoints/<default run>_epoch_100.eqx --default_t_clip 0.05
 
-Writes plots/sampling_<dataset>.png.
+Writes plots/sept30/sampling_<dataset>.png.
 """
 
 import argparse
@@ -42,6 +42,7 @@ p.add_argument("--num_steps", type=int, default=50)
 p.add_argument("--n_samples", type=int, default=3)
 p.add_argument("--n_cols", type=int, default=9)
 p.add_argument("--seed", type=int, default=0)
+p.add_argument("--out_dir", default="plots/sept30")
 args = p.parse_args()
 
 spec = DATASETS[args.dataset]
@@ -104,7 +105,7 @@ fig.suptitle(
     f"{args.dataset}: sampling from noise (shift {args.shift}, {args.num_steps} steps), same starting noise for both models",
     fontsize=9,
 )
-os.makedirs("plots", exist_ok=True)
-out = f"plots/sampling_{args.dataset}.png"
+os.makedirs(args.out_dir, exist_ok=True)
+out = os.path.join(args.out_dir, f"sampling_{args.dataset}.png")
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print(f"wrote {out}")

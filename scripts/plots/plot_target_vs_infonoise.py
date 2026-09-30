@@ -4,7 +4,7 @@ densities per lambda = -2 log sigma.
 
     python scripts/plots/plot_target_vs_infonoise.py   # -> plots/pi_target_vs_infonoise.png
     python scripts/plots/plot_target_vs_infonoise.py --per_class
-        # -> plots/pi_target_vs_infonoise_class{0..9}.png, rho* from each class's B.4 mmse
+        # -> plots/sept30/pi_target_vs_infonoise_class{0..9}.png, rho* from each class's B.4 mmse
 
 The target is restricted to the runs' sigma range [sigma_min, sigma_max] and
 normalized there, as in Eq. (87). Run curves are the final refresh, median over
@@ -37,7 +37,7 @@ def per_lambda(sigma, density_per_log_sigma):
     return lam, d / np.trapezoid(d[::-1], lam[::-1])
 
 
-def make_figure(runs, class_label=None):
+def make_figure(runs, class_label=None, out_dir="plots"):
     suffix = "" if class_label is None else f"_class{class_label}"
     fig, axes = plt.subplots(2, 3, figsize=(12, 6.5), constrained_layout=True)
     for row, base in enumerate(DATASETS):
@@ -82,7 +82,8 @@ def make_figure(runs, class_label=None):
         "w(σ) = 1/max(t_clip, 1−t)² = ((1+σ)/σ)² above the cap (t_clip = 0.05, or 0.005 for x0.1)",
         ha="center",
     )
-    out = f"plots/pi_target_vs_infonoise{suffix}.png"
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, f"pi_target_vs_infonoise{suffix}.png")
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"wrote {out}")
@@ -97,6 +98,6 @@ with open("results/infonoise_profiles.json") as f:
 
 if args.per_class:
     for c in range(10):
-        make_figure(runs, c)
+        make_figure(runs, c, "plots/sept30")
 else:
     make_figure(runs)
