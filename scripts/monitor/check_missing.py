@@ -62,7 +62,7 @@ SCHEDULES_EXTRA = [
 ]
 # The 2026-08 sweeps drop the three distributions that earlier results settled
 # (both skews, plus one of the interchangeable neutral ones) and keep only these,
-# in this order -- see scripts/slurm/run_fashion_sizes.sh and friends.
+# in this order -- see scripts/slurm/experiments/fashion_sizes.conf.
 NEUTRAL3_IDX = [0, 1, 2]
 
 

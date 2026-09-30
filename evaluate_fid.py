@@ -71,7 +71,7 @@ def run_evaluation(
     if not fid.test_stats_exists(real_stats_name, mode="clean"):
         raise RuntimeError(
             f"Real-image FID stats '{real_stats_name}' aren't cached yet. Run "
-            f"cache_real_stats.py --dataset {dataset} once first (see run_exp1_eval_stats.sh)."
+            f"cache_real_stats.py --dataset {dataset} once first."
         )
     # cleanfid downloads these into node-local /tmp with a check that races
     # when several array tasks share a node; stage them ourselves first.

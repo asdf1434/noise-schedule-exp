@@ -16,10 +16,7 @@
 # in its environment, so this passes it the same way submit.sh does.
 #
 # A path to a .sh file is accepted in that position too, and is resubmitted as
-# is with no EXPERIMENT set. That is how the pre-consolidation launchers were
-# requeued, and it still works for a job submitted from one of them:
-#   scripts/monitor/requeue_failed.sh "slurm_exp1_pilot_1097429_*.out" \
-#       scripts/slurm/delete_later/run_exp1.sh 120
+# is with no EXPERIMENT set.
 #
 # <log_pattern> is relative to logs/slurm/ and should match only the array
 # job you want to check (include the job ID, e.g. slurm_exp1_pilot_1097429_*.out,

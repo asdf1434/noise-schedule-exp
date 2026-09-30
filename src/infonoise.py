@@ -330,7 +330,7 @@ class InfoNoiseSampler:
         Split out of `refresh` so that the same conversion can be applied to an
         m_hat this sampler did not measure -- in particular the closed-form
         mmse(sigma) computed from the dataset itself
-        (scripts/analysis/closed_form_mmse.py). Running both through one code
+        (scripts/analysis/mmse_b4.py). Running both through one code
         path is what makes "what InfoNoise learned" and "what it should have
         learned" comparable: any difference between the two curves is
         attributable to the input, since nothing downstream of it differs.
