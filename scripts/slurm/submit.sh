@@ -6,6 +6,7 @@
 #     scripts/slurm/submit.sh <experiment> [stage ...]
 #     scripts/slurm/submit.sh --list
 #     scripts/slurm/submit.sh --dry-run <experiment> [stage ...]
+#     scripts/slurm/submit.sh --after <jobid>[:<jobid>...] <experiment> [stage ...]
 #
 # Experiments are the files in scripts/slurm/experiments/. Each one names its
 # training grid, its walltime, and the datasets its FID stage scores; this
@@ -29,6 +30,10 @@
 # retraining:
 #
 #     scripts/slurm/submit.sh mnist_inpaint eval_prep eval merge
+#
+# --after makes the first submitted stage wait (afterany) for other jobs, e.g.
+# to start one experiment's training only after another's, or to keep two
+# merge jobs from ever running at once.
 # ==========================================
 
 set -e
@@ -44,6 +49,12 @@ if [ "$1" = "--dry-run" ] || [ "$1" = "-n" ]; then
     shift
 fi
 
+AFTER=""
+if [ "$1" = "--after" ]; then
+    AFTER=$2
+    shift 2
+fi
+
 if [ "$1" = "--list" ] || [ -z "$1" ]; then
     echo "Experiments (scripts/slurm/experiments/):"
     echo
@@ -55,7 +66,7 @@ if [ "$1" = "--list" ] || [ -z "$1" ]; then
                  "$name" "${#CONFIGS[@]}" "$SEEDS" "$NUM_TASKS" "${EVAL_DATASETS[*]}" )
     done
     echo
-    echo "Usage: scripts/slurm/submit.sh [--dry-run] <experiment> [train|eval_prep|eval|merge ...]"
+    echo "Usage: scripts/slurm/submit.sh [--dry-run] [--after <jobid>] <experiment> [train|eval_prep|eval|merge ...]"
     [ -z "$1" ] && exit 1
     exit 0
 fi
@@ -93,7 +104,7 @@ submit() {
     fi
 }
 
-DEP=""
+DEP="$AFTER"
 for stage in "${STAGES[@]}"; do
     case "$stage" in
         train)
