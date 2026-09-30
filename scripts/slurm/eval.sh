@@ -60,10 +60,13 @@ if [ "${DRY_RUN:-0}" != "1" ]; then
     source venv/bin/activate
 fi
 
+# EVAL_MATCH (optional, from the .conf) limits scoring to experiments whose
+# name contains it, so a small experiment doesn't also score every other
+# unscored run of the same datasets.
 for DS in "${EVAL_DATASETS[@]}"; do
-    echo "+ evaluate_fid.py --shard $SHARD --num_shards $EVAL_SHARDS --dataset $DS"
+    echo "+ evaluate_fid.py --shard $SHARD --num_shards $EVAL_SHARDS --dataset $DS --match '$EVAL_MATCH'"
     [ "${DRY_RUN:-0}" = "1" ] || \
-        python -u evaluate_fid.py --shard "$SHARD" --num_shards "$EVAL_SHARDS" --dataset "$DS"
+        python -u evaluate_fid.py --shard "$SHARD" --num_shards "$EVAL_SHARDS" --dataset "$DS" --match "$EVAL_MATCH"
 done
 
 echo "$EXPERIMENT eval shard $SHARD complete."

@@ -11,6 +11,10 @@ interpolated linearly in log-log between the 61 grid points of the B.4 file.
 
 With per_class=True, each training example draws its noise level from its own
 class's pi, built from results/mmse_b4/<dataset>_class<c>.json.
+
+With mix_default=p, each example instead draws from the default
+logit-normal(0, 1) with probability p. The gt target has almost no mass at
+small sigma, where the sampler takes its last steps; the mixture puts some back.
 """
 
 import json
@@ -51,10 +55,12 @@ class GtTargetSampler:
         sigma_min: float = 0.002,
         sigma_max: float = 80.0,
         per_class: bool = False,
+        mix_default: float = 0.0,
         num_classes: int = 10,
         mmse_dir: str = "results/mmse_b4",
     ):
         self.per_class = bool(per_class)
+        self.mix_default = float(mix_default)
         self.log_sigma = np.linspace(np.log(sigma_min), np.log(sigma_max), NUM_POINTS)
         names = [f"{dataset}_class{c}" for c in range(num_classes)] if self.per_class else [dataset]
         self.cdfs = np.stack(
@@ -74,6 +80,8 @@ class GtTargetSampler:
         self, key: PRNGKeyArray, batch_size: int, labels: Optional[Int[Array, " batch"]] = None
     ) -> Float[Array, "batch 1 1 1"]:
         """Draw training noise levels, as t (1 = clean, 0 = pure noise)."""
+        if self.mix_default > 0:
+            key, key_mix, key_default = jax.random.split(key, 3)
         xi = np.asarray(jax.random.uniform(key, (batch_size,)), dtype=np.float64)
         rows = np.zeros(batch_size, dtype=int) if not self.per_class else np.asarray(labels)
         log_sigma = np.empty(batch_size)
@@ -81,4 +89,8 @@ class GtTargetSampler:
             mask = rows == row
             log_sigma[mask] = np.interp(xi[mask], self.cdfs[row], self.log_sigma)
         t = t_of_sigma(np.exp(log_sigma))
+        if self.mix_default > 0:
+            use_default = np.asarray(jax.random.uniform(key_mix, (batch_size,))) < self.mix_default
+            t_default = np.asarray(jax.nn.sigmoid(jax.random.normal(key_default, (batch_size,))))
+            t = np.where(use_default, t_default, t)
         return jnp.asarray(t.reshape(-1, 1, 1, 1), dtype=jnp.float32)

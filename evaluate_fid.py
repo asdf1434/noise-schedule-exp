@@ -42,7 +42,11 @@ def _belongs_to_dataset(experiment_name: str, dataset: str) -> bool:
 
 
 def run_evaluation(
-    shard: int, num_shards: int, dataset: str = "mnist", allow_cpu: bool = False
+    shard: int,
+    num_shards: int,
+    dataset: str = "mnist",
+    allow_cpu: bool = False,
+    match: str = "",
 ):
     if DEVICE.type == "cpu" and not allow_cpu:
         raise RuntimeError(
@@ -59,6 +63,10 @@ def run_evaluation(
         metrics_file = os.path.join(
             SHARD_DIR, f"master_fid_results_shard{shard}_{dataset}.json"
         )
+        # A filtered run gets its own shard files, so it never writes the same
+        # file as an unfiltered run of the same dataset.
+        if match:
+            metrics_file = metrics_file.replace(".json", f"_match-{match}.json")
 
     real_dir = DATASETS[dataset].real_dir
     real_stats_name = DATASETS[dataset].real_stats_name
@@ -89,6 +97,7 @@ def run_evaluation(
     schedule_dirs = [
         d for d in schedule_dirs if _belongs_to_dataset(Path(d).parts[1], dataset)
     ]
+    schedule_dirs = [d for d in schedule_dirs if match in Path(d).parts[1]]
     schedule_dirs = sorted(schedule_dirs, key=_epoch_sort_key)
 
     if not schedule_dirs:
@@ -205,9 +214,19 @@ def main():
         choices=list(DATASETS),
         help="which dataset's eval_runs/ experiments to score (run once per dataset)",
     )
+    parser.add_argument(
+        "--match",
+        type=str,
+        default="",
+        help="score only experiments whose name contains this string",
+    )
     args = parser.parse_args()
     run_evaluation(
-        args.shard, args.num_shards, dataset=args.dataset, allow_cpu=args.allow_cpu
+        args.shard,
+        args.num_shards,
+        dataset=args.dataset,
+        allow_cpu=args.allow_cpu,
+        match=args.match,
     )
 
 

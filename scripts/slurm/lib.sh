@@ -29,6 +29,7 @@ load_experiment() {
     EVAL_DATASETS=()
     EVAL_SHARDS=16
     EVAL_TIME=03:30:00
+    EVAL_MATCH=
     GENERATE_REAL=()
     CONFIGS=()
 
