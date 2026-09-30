@@ -20,6 +20,7 @@ from jaxtyping import Array, Float, Int, PRNGKeyArray, install_import_hook
 with install_import_hook("src", "beartype.beartype"):
     from src.conditioning import CONDITIONING
     from src.datasets import DATASETS
+    from src.gt_target import GtTargetSampler
     from src.infonoise import InfoNoiseSampler
     from src.loss import LOSS_WEIGHTINGS, compute_loss_cond
     from src.model import UNet
@@ -228,7 +229,7 @@ def main():
         "--train_dist",
         type=str,
         default="uniform",
-        choices=["uniform", "logit_normal", "plateau_logit_normal", "infonoise"],
+        choices=["uniform", "logit_normal", "plateau_logit_normal", "infonoise", "gt_target"],
         help="Fixed training noise distributions, or 'infonoise' for the online "
         "information-guided allocation of arXiv:2602.18647 (see src/infonoise.py). "
         "InfoNoise knobs go through --dist_params too, e.g. "
@@ -464,6 +465,20 @@ def main():
             **info_kwargs,
         )
         train_dist_fn = infonoise.sample_t
+    elif args.train_dist == "gt_target":
+        # pi = rho*/w from the exact B.4 mmse (src/gt_target.py). --dist_params
+        # takes sigma_min, sigma_max and per_class.
+        if dist_kwargs.get("per_class") and args.conditioning != "class":
+            parser.error("--dist_params per_class needs --conditioning class")
+        gt_target = GtTargetSampler(
+            args.dataset,
+            args.loss_weighting,
+            args.t_clip,
+            args.sigma_data,
+            num_classes=ds_spec.num_classes,
+            **dist_kwargs,
+        )
+        train_dist_fn = gt_target.sample_t
     else:
         train_dist_fn = dist_fn_map[args.train_dist]
 
@@ -498,9 +513,11 @@ def main():
             # split exactly as make_step used to internally, so the noise stream
             # is unchanged for a given --seed and old runs stay reproducible
             key_noise, key_time = jax.random.split(step_key)
-            t = train_dist_fn(key_time, batch_size)
-
             batch_labels = batched_labels[i] if batched_labels is not None else None
+            if args.train_dist == "gt_target":
+                t = train_dist_fn(key_time, batch_size, batch_labels)
+            else:
+                t = train_dist_fn(key_time, batch_size)
             model, opt_state, loss, unweighted = make_step(
                 model,
                 opt_state,
